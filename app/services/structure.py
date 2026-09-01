@@ -20,13 +20,20 @@ from .excel_parser import (
 
 
 def _ensure_sheet_records(path: str) -> int:
-    """登记全部 sheet 页 (按 Excel 顺序), 返回新增数量"""
+    """登记全部 sheet 页 (按 Excel 顺序), 返回新增数量
+    
+    跳过kind为None的sheet（如年度菜单）
+    """
     infos = parse_sheet_inventory(path)
     existing = {
         s.name for s in db.session.execute(select(Sheet)).scalars()
     }
     added = 0
     for info in infos:
+        # 跳过不显示为菜单的sheet（如年度菜单）
+        if info.kind is None:
+            continue
+            
         if info.name in existing:
             # 更新 kind / sort_order (Excel 可能调整)
             row = db.session.execute(

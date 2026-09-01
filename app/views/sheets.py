@@ -116,6 +116,17 @@ def detail(name: str):
         ctx.update(groups_order=order, groups=groups)
         return render_template("sheets/entries.html", **ctx)
 
+    if sheet.kind == "other":
+        # 加载该 sheet 下的所有条目
+        items = db.session.execute(
+            select(Item).where(
+                Item.sheet == name,
+                Item.is_active == True  # noqa: E712
+            ).order_by(Item.sort_order, Item.id)
+        ).scalars().all()
+        ctx.update(items=items)
+        return render_template("sheets/other.html", **ctx)
+
     return render_template("sheets/other.html", **ctx)
 
 
@@ -368,3 +379,113 @@ def batch_add_fields(name: str):
     flash(message, "success")
     
     return redirect(url_for("sheets.detail", name=name, mode="edit", year=year, month=month))
+
+
+@bp.route("/sheet/<path:name>/add-other-field", methods=["POST"])
+def add_other_field(name: str):
+    """为other类型的工作表添加新字段"""
+    sheet = db.session.execute(
+        select(Sheet).where(Sheet.name == name)
+    ).scalars().first()
+    if not sheet:
+        flash("工作表不存在", "error")
+        return redirect(url_for("settings.index"))
+
+    field_name = request.form.get("field_name", "").strip()
+    field_type = request.form.get("field_type", "").strip()
+    field_owner = request.form.get("field_owner", "家庭").strip()
+
+    if not field_name:
+        flash("字段名称不能为空", "error")
+        return redirect(url_for("sheets.detail", name=name))
+
+    # 检查是否已存在同名条目
+    existing = db.session.execute(
+        select(Item).where(
+            Item.sheet == name,
+            Item.name == field_name,
+            Item.is_active == True
+        )
+    ).scalars().first()
+    
+    if existing:
+        flash(f"字段 '{field_name}' 已存在", "error")
+        return redirect(url_for("sheets.detail", name=name))
+
+    it = Item(
+        name=field_name,
+        category=field_type or "其他",
+        owner=field_owner,
+        sheet=name,
+        sort_order=999,
+        is_active=True,
+    )
+    db.session.add(it)
+    db.session.commit()
+    flash(f"已添加字段: {field_name} ({field_type})", "success")
+
+    return redirect(url_for("sheets.detail", name=name))
+
+
+@bp.route("/sheet/<path:name>/batch-add-other-fields", methods=["POST"])
+def batch_add_other_fields(name: str):
+    """批量添加other类型工作表的字段"""
+    sheet = db.session.execute(
+        select(Sheet).where(Sheet.name == name)
+    ).scalars().first()
+    if not sheet:
+        flash("工作表不存在", "error")
+        return redirect(url_for("settings.index"))
+    
+    # 解析批量输入的字段（每行一个字段）
+    fields_text = request.form.get("fields_text", "").strip()
+    field_type = request.form.get("field_type", "").strip()
+    field_owner = request.form.get("field_owner", "家庭").strip()
+    
+    if not fields_text:
+        flash("字段内容不能为空", "error")
+        return redirect(url_for("sheets.detail", name=name))
+    
+    # 按行分割字段
+    field_names = [line.strip() for line in fields_text.split('\n') if line.strip()]
+    
+    if not field_names:
+        flash("有效的字段名称不能为空", "error")
+        return redirect(url_for("sheets.detail", name=name))
+    
+    added_count = 0
+    skipped_count = 0
+    
+    for field_name in field_names:
+        # 检查是否已存在同名条目
+        existing = db.session.execute(
+            select(Item).where(
+                Item.sheet == name,
+                Item.name == field_name,
+                Item.is_active == True
+            )
+        ).scalars().first()
+        
+        if existing:
+            skipped_count += 1
+            continue
+            
+        it = Item(
+            name=field_name,
+            category=field_type or "其他",
+            owner=field_owner,
+            sheet=name,
+            sort_order=999,
+            is_active=True,
+        )
+        db.session.add(it)
+        added_count += 1
+    
+    db.session.commit()
+    
+    message = f"批量添加完成: 成功 {added_count} 个"
+    if skipped_count > 0:
+        message += f", 跳过 {skipped_count} 个 (已存在)"
+    flash(message, "success")
+    
+    return redirect(url_for("sheets.detail", name=name))

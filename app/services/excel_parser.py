@@ -96,10 +96,16 @@ _IGNORED_SUBHEADS = {"合计", "差额", "特殊说明", "期初余额", "项目
 
 
 # -------------------------------------------------------------- 工作表清单
-def _infer_sheet_kind(name: str) -> str:
-    """按工作表名推断类型: entries(年度账单) / balances(结余) / other"""
+def _infer_sheet_kind(name: str) -> str | None:
+    """按工作表名推断类型: entries(年度账单) / balances(结余) / other
+    
+    返回None表示该sheet不应作为菜单显示（如年度菜单）
+    """
     if "结余" in name or "盘点" in name:
         return "balances"
+    # 年度菜单不显示：包含年份的sheet名称
+    if any(str(year) in name for year in range(2020, 2030)):
+        return None
     if "年度账单" in name or name.startswith("君军之家") or "李君" in name:
         return "entries"
     return "other"
@@ -108,7 +114,7 @@ def _infer_sheet_kind(name: str) -> str:
 @dataclass
 class SheetInfo:
     name: str
-    kind: str  # entries / balances / other
+    kind: str | None  # entries / balances / other / None (不显示为菜单)
     order: int
 
 
@@ -116,6 +122,7 @@ def parse_sheet_inventory(path: str) -> list[SheetInfo]:
     """枚举 Excel 全部工作表, 返回 (name, kind, order) 清单
 
     用于首次导入时把每个 sheet 页登记为左侧大菜单。
+    kind为None的sheet不会显示为菜单（如年度菜单）。
     """
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     infos = [
