@@ -6,7 +6,7 @@ services:
       - "5050:5050"
     volumes:
       - ./:/app
-      - db_data:/app/instance
+      - ./data:/app/instance
       - upload_data:/app/uploads
       - export_data:/app/exports
     environment:
@@ -18,6 +18,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  db_data:
   upload_data:
   export_data:
