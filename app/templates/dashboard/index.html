@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}首页 · 君军之家记账单{% endblock %}
+
+{% block content %}
+<section class="section-title">
+  {{ year }}年{{ month }}月 概览 · 月末总资产 {{ fmt_money(asset_total) }}
+</section>
+
+<div class="grid grid-4">
+  <div class="card stat-card income">
+    <div class="label">本月收入</div>
+    <div class="value">{{ fmt_money(summary.income_total) }}</div>
+  </div>
+  <div class="card stat-card expense">
+    <div class="label">本月支出</div>
+    <div class="value">{{ fmt_money(summary.expense_total) }}</div>
+  </div>
+  <div class="card stat-card net">
+    <div class="label">本月净额</div>
+    <div class="value">{% if summary.net >= 0 %}+{% endif %}{{ fmt_money(summary.net) }}</div>
+  </div>
+  <div class="card stat-card">
+    <div class="label">月末总资产</div>
+    <div class="value">{{ fmt_money(asset_total) }}</div>
+  </div>
+</div>
+
+<div class="grid grid-2" style="margin-top:1rem;">
+  <div class="card">
+    <div class="section-title" style="margin-top:0;">收支趋势 (近12月)</div>
+    <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="section-title" style="margin-top:0;">年度项目占比</div>
+    <div class="chart-wrap"><canvas id="topChart"></canvas></div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:1rem;">
+  <div class="section-title">本月条目明细</div>
+  {% if summary.income_items or summary.expense_items %}
+  <table>
+    <thead>
+      <tr><th>分类</th><th>归属</th><th>条目</th><th class="num">金额</th><th>备注</th></tr>
+    </thead>
+    <tbody>
+      {% for it in summary.income_items %}
+      <tr>
+        <td><span class="badge tag-income">收入</span></td>
+        <td>{{ it.owner }}</td>
+        <td>{{ it.name }}</td>
+        <td class="num positive">{{ fmt_money(it.value) }}</td>
+        <td>{{ it.note }}</td>
+      </tr>
+      {% endfor %}
+      {% for it in summary.expense_items %}
+      <tr>
+        <td><span class="badge tag-expense">支出</span></td>
+        <td>{{ it.owner }}</td>
+        <td>{{ it.name }}</td>
+        <td class="num negative">{{ fmt_money(it.value) }}</td>
+        <td>{{ it.note }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <div class="icon">📝</div>
+    <p>{{ year }}年{{ month }}月 暂无条目, 去
+      <a href="{{ url_for('entries.edit', year=year, month=month) }}">在线填写</a>
+      或 在
+      <a href="{{ url_for('import_export.index') }}">导入导出页</a>
+      一键导入示例数据
+    </p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function fmtMoney(v){return Number(v||0).toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2})}
+
+// 传入数据
+const SERIES = {{ series | tojson }};
+const TOP_ITEMS = {{ top_items | tojson }};
+
+new Chart(document.getElementById("trendChart"), {
+  type: "bar",
+  data: {
+    labels: SERIES.map(s => s.label),
+    datasets: [
+      { label: "收入", data: SERIES.map(s => s.income), backgroundColor: "#16a34a" },
+      { label: "支出", data: SERIES.map(s => s.expense), backgroundColor: "#dc2626" },
+      { type: "line", label: "净额", data: SERIES.map(s => s.net),
+        borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.1)",
+        fill: false, tension: .3, borderWidth: 2, pointRadius: 3 }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { position: "top" } },
+    scales: { y: { ticks: { callback: v => fmtMoney(v) } } }
+  }
+});
+
+new Chart(document.getElementById("topChart"), {
+  type: "doughnut",
+  data: {
+    labels: TOP_ITEMS.map(t => t.name + "(" + t.category + ")"),
+    datasets: [{
+      data: TOP_ITEMS.map(t => t.value),
+      backgroundColor: ["#2563eb","#16a34a","#dc2626","#d97706","#7c3aed",
+        "#0891b2","#db2777","#65a30d"]
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { position: "right", labels: { boxWidth: 12, font: { size: 10 } } } }
+  }
+});
+</script>
+{% endblock %}

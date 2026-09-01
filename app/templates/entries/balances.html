@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}月末结余 · {{ year }}年{{ month }}月{% endblock %}
+
+{% block content %}
+<div class="action-row">
+  <h2 class="section-title" style="margin:0;border:none;padding:0;">
+    月末结余 · {{ year }}年{{ month }}月
+  </h2>
+  <span class="muted" style="margin-left:auto;">填入各账户月末余额 · 多人同时编辑会自动加锁</span>
+</div>
+
+<form method="post" action="{{ url_for('entries.balances_save', year=year, month=month) }}">
+  {% set ns = namespace(groups=[], last_type='') %}
+  {% for a in accounts %}
+    {% if a.type != ns.last_type %}
+      {% set ns.last_type = a.type %}
+      {% if not loop.first %}</tbody></table></div>{% endif %}
+      <div class="card" style="margin-top:1rem;">
+      <div class="section-title" style="margin-top:0;"><span class="badge tag-balance">{{ a.type }}</span></div>
+      <table>
+        <thead><tr><th>归属</th><th>账户</th><th class="num">余额</th><th>备注</th></tr></thead>
+        <tbody>
+    {% endif %}
+    {% set s = snap_map.get(a.id) %}
+    {% set lk = locks.get(a.id) %}
+    {% set locked_by_other = lk and lk.user_id != my_user_id %}
+    <tr id="acc-{{ a.id }}" data-rid="{{ a.id }}" data-rt="balance"
+        {% if locked_by_other %}class="row-locked"{% endif %}>
+      <td>{{ a.owner }}</td>
+      <td>{{ a.name }}</td>
+      <td class="num">
+        <input type="number" step="0.01" class="table-input"
+               name="acc_{{ a.id }}"
+               value="{{ s.value if s else '' }}"
+               data-rid="{{ a.id }}" data-rt="balance"
+               {% if locked_by_other %}disabled{% endif %}>
+        <div class="lock-status" id="lock-{{ a.id }}"
+             {% if locked_by_other %}data-locked="1" data-who="{{ lk.user_label }}"{% endif %}>
+          {% if locked_by_other %}<span class="locked">已锁定 · {{ lk.user_label }}</span>{% endif %}
+        </div>
+      </td>
+      <td><input type="text" class="table-input" name="note_{{ a.id }}" value="{{ s.note if s else '' }}"></td>
+    </tr>
+    {% if loop.last %}</tbody></table></div>{% endif %}
+  {% endfor %}
+
+  <div class="action-row" style="margin-top:1rem;">
+    <button type="submit" class="btn">保存结余</button>
+    <a class="btn btn-secondary" href="{{ url_for('entries.index', year=year, month=month) }}">返回</a>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+window.EDIT_LOCK = {
+  year: {{ year }},
+  month: {{ month }},
+  userId: "{{ my_user_id }}",
+};
+</script>
+<script src="{{ url_for('static', filename='js/edit_lock.js') }}"></script>
+{% endblock %}

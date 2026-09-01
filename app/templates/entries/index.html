@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}月度条目 · {{ year }}年{{ month }}月{% endblock %}
+
+{% block content %}
+<div class="action-row">
+  <h2 class="section-title" style="margin:0;border:none;padding:0;">
+    {{ year }}年{{ month }}月 条目
+  </h2>
+  <span style="margin-left:auto;" class="muted">
+    收入 {{ fmt_money(summary.income_total) }} · 支出 {{ fmt_money(summary.expense_total) }} · 净额
+    <span class="{% if summary.net >= 0 %}positive{% else %}negative{% endif %}">
+      {{ fmt_money(summary.net) }}
+    </span>
+  </span>
+</div>
+
+<div class="card">
+  <div class="section-title" style="margin-top:0;">已填写条目 ({{ summary.income_items|length + summary.expense_items|length }})</div>
+  {% if summary.income_items or summary.expense_items %}
+  <table>
+    <thead>
+      <tr><th>分类</th><th>归属</th><th>条目</th><th class="num">金额</th><th>备注</th><th>来源</th></tr>
+    </thead>
+    <tbody>
+      {% for it in summary.income_items %}
+      <tr>
+        <td><span class="badge tag-income">收入</span></td>
+        <td>{{ it.owner }}</td>
+        <td>{{ it.name }}</td>
+        <td class="num positive">{{ fmt_money(it.value) }}</td>
+        <td>{{ it.note }}</td>
+        <td><span class="badge">{{ it.source }}</span></td>
+      </tr>
+      {% endfor %}
+      {% for it in summary.expense_items %}
+      <tr>
+        <td><span class="badge tag-expense">支出</span></td>
+        <td>{{ it.owner }}</td>
+        <td>{{ it.name }}</td>
+        <td class="num negative">{{ fmt_money(it.value) }}</td>
+        <td>{{ it.note }}</td>
+        <td><span class="badge">{{ it.source }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <p>本月暂无已填写条目</p>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-top:1rem;">
+  <div class="section-title" style="margin-top:0;">
+    未填写条目 (<span class="missing-badge">{{ missing_items|length }}</span>) - 红色行需补填
+  </div>
+  {% if missing_items %}
+  <table>
+    <thead>
+      <tr><th>分类</th><th>归属</th><th>子分类</th><th>条目</th><th class="num">默认值</th><th>操作</th></tr>
+    </thead>
+    <tbody>
+      {% for it in missing_items %}
+      <tr class="missing-row">
+        <td><span class="badge tag-{{ 'income' if it.category == '收入' else ('expense' if it.category == '支出' else 'balance') }}">{{ it.category }}</span></td>
+        <td>{{ it.owner }}</td>
+        <td>{{ it.sub_category }}</td>
+        <td>{{ it.name }}</td>
+        <td class="num muted">—</td>
+        <td>
+          <a class="btn btn-sm" href="{{ url_for('entries.edit', year=year, month=month) }}#item-{{ it.id }}">补填</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><p>本月所有条目均已填写 ✓</p></div>
+  {% endif %}
+</div>
+
+<div class="action-row" style="margin-top:1rem;">
+  <a class="btn" href="{{ url_for('entries.edit', year=year, month=month) }}">在线填写本月</a>
+  <a class="btn btn-secondary" href="{{ url_for('entries.balances', year=year, month=month) }}">月末结余</a>
+</div>
+{% endblock %}

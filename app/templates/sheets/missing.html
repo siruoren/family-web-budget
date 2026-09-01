@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}{{ name }} 未登记{% endblock %}
+
+{% block content %}
+<div class="card empty-state">
+  <div class="icon">🗂️</div>
+  <h2>{{ name }}</h2>
+  <p class="muted">该工作表尚未登记到系统。</p>
+  <a class="btn" href="{{ url_for('import_export.index') }}">去初始化结构</a>
+</div>
+{% endblock %}

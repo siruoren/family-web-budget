@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}系统配置 · 后台{% endblock %}
+
+{% block content %}
+<h2 class="section-title">系统配置 · 后台管理</h2>
+
+{# ==================== 用户标识设置 ==================== #}
+<div class="card">
+  <div class="section-title" style="margin-top:0;">
+    <span class="badge">用户标识</span>
+  </div>
+  <div class="form-row">
+    <label>当前用户ID:</label>
+    <code class="setting-code">{{ my_user_id }}</code>
+  </div>
+  <form method="post" action="{{ url_for('settings.update_profile') }}" class="form-row">
+    <label>我的昵称:</label>
+    <input type="text" name="user_label" value="{{ my_user_label }}"
+           placeholder="输入昵称 (编辑锁状态会显示谁在编辑)" required
+           style="min-width:220px;">
+    <button type="submit" class="btn btn-sm">保存昵称</button>
+  </form>
+</div>
+
+{# ==================== 并发锁配置 ==================== #}
+<div class="card" style="margin-top:1rem;">
+  <div class="section-title" style="margin-top:0;">
+    <span class="badge tag-balance">并发锁配置</span>
+    <small class="muted" style="margin-left:.5rem;">多页面同时编辑时自动加锁, 防止分支冲突</small>
+  </div>
+  <form method="post" action="{{ url_for('settings.update_lock_config') }}">
+    <div class="grid grid-2">
+      <div>
+        <div class="form-row">
+          <label>锁有效期 (秒):</label>
+          <input type="number" name="lock_ttl" value="{{ lock_config.ttl }}"
+                 min="10" max="3600" step="10" style="width:120px;">
+          <span class="muted">默认 180 (3分钟)</span>
+        </div>
+        <div class="form-row">
+          <label>心跳续期间隔 (秒):</label>
+          <input type="number" name="heartbeat_interval" value="{{ lock_config.heartbeat_interval }}"
+                 min="5" max="300" step="5" style="width:120px;">
+          <span class="muted">编辑中定期续期</span>
+        </div>
+        <div class="form-row">
+          <label>锁状态同步间隔 (秒):</label>
+          <input type="number" name="sync_interval" value="{{ lock_config.sync_interval }}"
+                 min="5" max="300" step="5" style="width:120px;">
+          <span class="muted">轮询他人锁状态</span>
+        </div>
+      </div>
+      <div>
+        <div class="config-switch-row">
+          <label class="switch-label">
+            <input type="checkbox" name="lock_enabled"
+                   {{ 'checked' if lock_config.enabled else '' }}>
+            <span class="switch-text">启用并发锁</span>
+          </label>
+          <p class="muted" style="font-size:.82rem;margin:.35rem 0 0;">
+            关闭后, 多人同时编辑不再加锁, 可能产生覆盖冲突
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="action-row" style="margin-top:.75rem;">
+      <button type="submit" class="btn btn-sm">保存锁配置</button>
+      <span class="muted">当前: {{ '已启用' if lock_config.enabled else '已禁用' }} · TTL={{ lock_config.ttl }}s</span>
+    </div>
+  </form>
+</div>
+
+{# ==================== 活跃锁管理 ==================== #}
+<div class="card" style="margin-top:1rem;">
+  <div class="section-title" style="margin-top:0;">
+    <span class="badge tag-expense">活跃锁管理</span>
+    <small class="muted" style="margin-left:.5rem;">
+      当前 {{ active_locks|length }} 个活跃锁 · 总计 {{ stats.active_locks }} 条记录
+    </small>
+  </div>
+  <div class="action-row">
+    <form method="post" action="{{ url_for('settings.cleanup_expired_locks') }}" style="display:inline;">
+      <button type="submit" class="btn btn-sm btn-secondary">清理过期锁</button>
+    </form>
+    <form method="post" action="{{ url_for('settings.force_release_all_locks') }}"
+          onsubmit="return confirm('将清空所有活跃锁, 确认?')"
+          style="display:inline;">
+      <input type="text" name="confirm" placeholder="输入'确认清空'"
+             style="width:140px;">
+      <button type="submit" class="btn btn-sm btn-danger">一键清空所有锁</button>
+    </form>
+  </div>
+
+  {% if active_locks %}
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th><th>资源类型</th><th>资源ID</th><th>周期</th>
+        <th>持锁用户</th><th>获取时间</th><th class="num">剩余(秒)</th><th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for lk in active_locks %}
+      <tr>
+        <td>{{ lk.id }}</td>
+        <td><span class="badge {% if lk.resource_type == 'entry' %}tag-income{% else %}tag-balance{% endif %}">{{ lk.resource_type }}</span></td>
+        <td>{{ lk.resource_id }}</td>
+        <td>{{ lk.period_key }}</td>
+        <td>{{ lk.user_label }} <small class="muted">({{ lk.user_id }})</small></td>
+        <td>{{ lk.acquired_at.strftime('%H:%M:%S') if lk.acquired_at else '—' }}</td>
+        <td class="num {{ 'positive' if lk.remaining_seconds > 60 else 'negative' }}">
+          {{ lk.remaining_seconds }}
+        </td>
+        <td>
+          <form method="post" action="{{ url_for('settings.force_release_lock', lock_id=lk.id) }}"
+                onsubmit="return confirm('强制释放锁 #{{ lk.id }}?')"
+                style="display:inline;">
+            <button type="submit" class="btn-delete" title="强制释放">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><p>当前无活跃锁</p></div>
+  {% endif %}
+</div>
+
+{# ==================== 系统信息 ==================== #}
+<div class="grid grid-2" style="margin-top:1rem;">
+  <div class="card">
+    <div class="section-title" style="margin-top:0;"><span class="badge">数据库信息</span></div>
+    <table class="info-table">
+      <tr><td class="muted">数据库路径</td><td><code class="setting-code">{{ sys_info.db_path }}</code></td></tr>
+      <tr><td class="muted">文件大小</td><td>{{ sys_info.db_size_kb }} KB</td></tr>
+      <tr><td class="muted">文件存在</td><td>{{ '是' if sys_info.db_exists else '否' }}</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="section-title" style="margin-top:0;"><span class="badge">数据统计</span></div>
+    <table class="info-table">
+      <tr><td class="muted">条目模板</td><td class="num">{{ stats.items }}</td></tr>
+      <tr><td class="muted">月度记录</td><td class="num">{{ stats.entries }}</td></tr>
+      <tr><td class="muted">账户</td><td class="num">{{ stats.accounts }}</td></tr>
+      <tr><td class="muted">结余快照</td><td class="num">{{ stats.snapshots }}</td></tr>
+      <tr><td class="muted">导入日志</td><td class="num">{{ stats.import_logs }}</td></tr>
+      <tr><td class="muted">活跃锁</td><td class="num">{{ stats.active_locks }}</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="grid grid-2" style="margin-top:1rem;">
+  <div class="card">
+    <div class="section-title" style="margin-top:0;"><span class="badge">运行环境</span></div>
+    <table class="info-table">
+      <tr><td class="muted">应用版本</td><td>v{{ sys_info.app_version }}</td></tr>
+      <tr><td class="muted">Python</td><td>{{ sys_info.python }}</td></tr>
+      <tr><td class="muted">操作系统</td><td>{{ sys_info.platform }}</td></tr>
+      <tr><td class="muted">调试模式</td><td>{{ '开启' if sys_info.flask_debug else '关闭' }}</td></tr>
+      <tr><td class="muted">服务器时间</td><td>{{ sys_info.now }}</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="section-title" style="margin-top:0;"><span class="badge">全部配置项</span></div>
+    {% if all_settings %}
+    <table class="info-table">
+      <thead><tr><th>键</th><th>值</th><th>类型</th><th>更新时间</th></tr></thead>
+      <tbody>
+        {% for s in all_settings %}
+        <tr>
+          <td><code class="setting-code">{{ s.key }}</code></td>
+          <td>{{ s.value }}</td>
+          <td><small class="muted">{{ s.vtype }}</small></td>
+          <td><small class="muted">{{ s.updated_at.strftime('%m-%d %H:%M') if s.updated_at else '—' }}</small></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state"><p>暂无自定义配置项 (使用默认值)</p></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

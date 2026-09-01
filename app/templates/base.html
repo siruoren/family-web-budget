@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}家庭记账单{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <nav class="topbar">
+    <a class="brand" href="{{ url_for('dashboard.index') }}">君军之家 · 记账单</a>
+    <div class="nav-links">
+      <a href="{{ url_for('dashboard.index') }}">首页</a>
+      <a href="{{ url_for('entries.index') }}">月度条目</a>
+      <a href="{{ url_for('entries.edit') }}">在线填写</a>
+      <a href="{{ url_for('entries.balances') }}">月末结余</a>
+      <a href="{{ url_for('items.index') }}">项目条目</a>
+      <a href="{{ url_for('items.accounts') }}">账户管理</a>
+      <a href="{{ url_for('analysis.index') }}">智能分析</a>
+      <a href="{{ url_for('import_export.index') }}">导入导出</a>
+      <a href="{{ url_for('admin.index') }}">后台迁移</a>
+      <a href="{{ url_for('settings.index') }}">系统配置</a>
+    </div>
+    <form class="period-picker" method="get" action="{{ url_for('entries.index') }}">
+      <select name="year">
+        {% for y in range(current_year - 5, current_year + 2) %}
+          <option value="{{ y }}" {% if y == sel_year %}selected{% endif %}>{{ y }}年</option>
+        {% endfor %}
+      </select>
+      <select name="month">
+        {% for m in range(1, 13) %}
+          <option value="{{ m }}" {% if m == sel_month %}selected{% endif %}>{{ m }}月</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-sm">切换</button>
+    </form>
+  </nav>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <span>工作表导航</span>
+        <a class="sidebar-refresh" href="{{ url_for('import_export.index') }}" title="管理/初始化结构">⚙</a>
+      </div>
+      {% if sidebar_tree %}
+      <ul class="tree">
+        {% for node in sidebar_tree %}
+        <li class="tree-node">
+          <details class="tree-sheet" {% if node.kind == 'balances' %}open{% endif %}>
+            <summary class="tree-sheet-head">
+              <span class="tree-sheet-name">{{ node.name }}</span>
+              {% if node.kind == 'balances' %}
+                <span class="tree-badge tag-balance">结余</span>
+              {% elif node.kind == 'entries' %}
+                <span class="tree-badge tag-income">账单</span>
+              {% else %}
+                <span class="tree-badge">{{ node.kind }}</span>
+              {% endif %}
+              <span class="tree-count">
+                {%- if node.count %} ({{ node.count }}){% endif -%}
+              </span>
+            </summary>
+
+            {% if node.groups %}
+              <ul class="tree-sub">
+                {% for grp in node.groups %}
+                <li class="tree-group">
+                  <details class="tree-group-det">
+                    <summary class="tree-group-head">{{ grp.name }}
+                      <span class="tree-count">({{ grp.count }})</span>
+                    </summary>
+                    <ul class="tree-leaves">
+                      {% for leaf in grp.leaves %}
+                      <li>
+                        <a href="{{ leaf.url }}" class="tree-leaf"
+                           title="{{ leaf.sub }}">
+                          <span class="leaf-dot"></span>{{ leaf.name }}
+                        </a>
+                      </li>
+                      {% endfor %}
+                    </ul>
+                  </details>
+                </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <ul class="tree-sub">
+                <li class="tree-leaf-row">
+                  <a class="tree-leaf" href="{{ node.url }}">查看 ›</a>
+                </li>
+              </ul>
+            {% endif %}
+          </details>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="sidebar-empty">
+        <p>暂无工作表结构</p>
+        <a class="btn btn-sm" href="{{ url_for('import_export.index') }}">去初始化</a>
+      </div>
+      {% endif %}
+    </aside>
+
+    <main class="container main-with-sidebar">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flashes">
+            {% for cat, msg in messages %}
+              <div class="flash flash-{{ cat }}">{{ msg }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <footer class="footer">
+    <span>家庭记账单 · MVT (Flask + SQLAlchemy + SQLite) · {{ current_year }}</span>
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

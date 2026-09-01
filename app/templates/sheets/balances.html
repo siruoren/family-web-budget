@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}{{ sheet.name }} - 结余{% endblock %}
+
+{% block content %}
+<div class="action-row">
+  <h2 class="section-title" style="margin:0;border:none;padding:0;">{{ sheet.name }}</h2>
+  <span class="muted" style="margin-left:auto;">
+    {% if latest_year %}最新数据: {{ latest_year }}年{{ latest_month }}月{% else %}暂无结余数据{% endif %}
+  </span>
+</div>
+
+{% for gname in groups_order %}
+<div class="card" style="margin-bottom:1rem;">
+  <h3 class="section-title" style="margin-top:0;">{{ gname }}</h3>
+  <table>
+    <thead>
+      <tr><th>账户</th><th>类型</th><th>归属</th><th class="num">最新结余</th><th>操作</th></tr>
+    </thead>
+    <tbody>
+      {% for a, v in groups[gname] %}
+      <tr>
+        <td>{{ a.name }}</td>
+        <td><span class="badge tag-balance">{{ a.type }}</span></td>
+        <td>{{ a.owner }}</td>
+        <td class="num">{% if v is not none %}{{ v|fmt_money }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td><a class="btn btn-sm" href="{{ url_for('items.account_edit', acc_id=a.id) }}">编辑</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="empty-state">该大类下暂无账户</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card empty-state">
+  <div class="icon">📂</div>
+  <p>该工作表尚未解析出账户结构</p>
+  <a class="btn" href="{{ url_for('import_export.index') }}">去导入导出初始化结构</a>
+</div>
+{% endfor %}
+{% endblock %}
