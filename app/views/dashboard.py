@@ -19,7 +19,7 @@ def index():
     year = request.args.get("year", type=int) or now.year
     month = request.args.get("month", type=int) or now.month
     overview = dashboard_overview(user_id=g.user_id, year=year, month=month)
-    return render_template("dashboard/index.html", year=year, month=month, **overview)
+    return render_template("dashboard/index.html", **overview)
 
 
 @bp.route("/api/dashboard")
