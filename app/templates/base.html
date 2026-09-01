@@ -28,11 +28,23 @@
   </div>
   {% endif %}
 
+  {# ===== 顶部菜单栏 ===== #}
+  <nav class="topbar">
+    <a class="brand" href="{{ url_for('dashboard.index') }}">君军之家 · 记账单</a>
+    <div class="nav-links">
+      <a href="{{ url_for('dashboard.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('dashboard') }}">首页</a>
+      <a href="{{ url_for('entries.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('entries') }}">月度条目</a>
+      <a href="{{ url_for('entries.balances') }}" class="{{ 'active' if request.endpoint == 'entries.balances' }}">月末结余</a>
+      <a href="{{ url_for('analysis.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('analysis') }}">智能分析</a>
+      <a href="{{ url_for('settings.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('settings') }}">系统配置</a>
+    </div>
+    {% if user_label %}
+    <span class="topbar-user">{{ user_label }}</span>
+    {% endif %}
+  </nav>
+
   <div class="layout">
     <aside class="sidebar">
-      <div class="sidebar-head">
-        <a class="brand" href="{{ url_for('dashboard.index') }}">君军之家 · 记账单</a>
-      </div>
 
       {# ===== 工作表导航 ===== #}
       {% if sidebar_tree %}
@@ -94,14 +106,6 @@
       </div>
       {% endif %}
 
-      {# ===== 底部系统导航 ===== #}
-      <div class="sidebar-nav">
-        <a href="{{ url_for('dashboard.index') }}">首页</a>
-        <a href="{{ url_for('entries.index') }}">月度条目</a>
-        <a href="{{ url_for('entries.balances') }}">月末结余</a>
-        <a href="{{ url_for('analysis.index') }}">智能分析</a>
-        <a href="{{ url_for('settings.index') }}">系统配置</a>
-      </div>
     </aside>
 
     <main class="container main-with-sidebar">
