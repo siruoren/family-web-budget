@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{% block title %}家庭记账单{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -24,7 +25,7 @@
     </div>
     <form class="period-picker" method="get" action="{{ url_for('entries.index') }}">
       <select name="year">
-        {% for y in range(current_year - 5, current_year + 2) %}
+        {% for y in range(current_year - 10, current_year + 2) %}
           <option value="{{ y }}" {% if y == sel_year %}selected{% endif %}>{{ y }}年</option>
         {% endfor %}
       </select>

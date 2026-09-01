@@ -80,7 +80,7 @@
 
 {% block scripts %}
 <script>
-function fmtMoney(v){return Number(v||0).toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2})}
+// fmtMoney 已在 app.js 中全局定义
 
 // 传入数据
 const SERIES = {{ series | tojson }};

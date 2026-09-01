@@ -6,20 +6,16 @@ from flask import (
     send_file, current_app,
 )
 from werkzeug.utils import secure_filename
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 
 from .. import db
 from ..models import ImportLog, Item, Entry, Account, BalanceSnapshot
 from ..services.exporter import (
     export_sqlite, import_sqlite_db, import_json_file,
 )
+from ..utils import allowed_file
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
-
-
-def _allowed(filename: str) -> bool:
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    return ext in current_app.config["ALLOWED_EXTENSIONS"]
 
 
 @bp.route("/")
@@ -59,7 +55,7 @@ def import_db():
     if not f or not f.filename:
         flash("请选择 .db / .sqlite / .json 文件", "error")
         return redirect(url_for("admin.index"))
-    if not _allowed(f.filename):
+    if not allowed_file(f.filename):
         flash("不支持的文件类型", "error")
         return redirect(url_for("admin.index"))
     ext = f.filename.rsplit(".", 1)[-1].lower()
@@ -99,8 +95,7 @@ def reset():
         flash("请输入 '确认清空' 以确认", "error")
         return redirect(url_for("admin.index"))
     for tbl in (Entry, BalanceSnapshot, ImportLog):
-        for row in db.session.execute(select(tbl)).scalars().all():
-            db.session.delete(row)
+        db.session.execute(delete(tbl))
     db.session.commit()
     flash("已清空所有动态数据 (条目 / 结余 / 日志)", "success")
     return redirect(url_for("admin.index"))

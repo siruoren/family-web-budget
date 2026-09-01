@@ -38,6 +38,7 @@
       <a class="btn btn-sm" href="{{ url_for('items.account_edit', acc_id=a.id) }}">编辑</a>
       <form method="post" action="{{ url_for('items.account_delete', acc_id=a.id) }}"
             onsubmit="return confirmDelete(this.id, '确认删除账户 {{ a.name }}?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn-delete" title="删除">×</button>
       </form>
     </td>

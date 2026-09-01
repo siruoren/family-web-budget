@@ -22,6 +22,7 @@
     <div class="section-title" style="margin-top:0;">整库导入 (迁移)</div>
     <p class="muted">支持 .db / .sqlite / .json (与导出文件兼容), 同主键已存在数据按策略处理</p>
     <form method="post" enctype="multipart/form-data" action="{{ url_for('admin.import_db') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="file" name="file" accept=".db,.sqlite,.sqlite3,.json" required style="margin-bottom:.5rem;">
       <label>去重策略:
         <select name="strategy">
@@ -39,6 +40,7 @@
   <p class="muted">仅清空 Entry / BalanceSnapshot / ImportLog, 保留条目与账户模板</p>
   <form method="post" action="{{ url_for('admin.reset') }}"
         onsubmit="return confirm('此操作将清空所有月度记录与结余快照, 确认?')">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="text" name="confirm" placeholder="输入 '确认清空' 以确认" style="min-width:240px;">
     <button type="submit" class="btn btn-danger" style="margin-left:.5rem;">执行清空</button>
   </form>

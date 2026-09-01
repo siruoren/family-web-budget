@@ -88,6 +88,9 @@ def update_profile():
     if not label:
         flash("昵称不能为空", "error")
         return redirect(url_for("settings.index"))
+    if len(label) > 32:
+        flash("昵称过长 (最多 32 字符)", "error")
+        return redirect(url_for("settings.index"))
     session["user_label"] = label
     g.user_label = label
     flash(f"已设置昵称为: {label}", "success")

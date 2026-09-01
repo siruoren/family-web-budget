@@ -41,6 +41,7 @@
           <a class="btn btn-sm" href="{{ url_for('items.edit', item_id=it.id) }}">编辑</a>
           <form method="post" action="{{ url_for('items.delete', item_id=it.id) }}"
                 onsubmit="return confirmDelete(this.id, '确认删除条目 {{ it.name }}?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn-delete" title="删除">×</button>
           </form>
         </td>

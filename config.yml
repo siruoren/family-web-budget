@@ -1,0 +1,40 @@
+# 家庭记账单 Web 应用配置
+# 环境变量优先级高于此文件中的配置
+
+server:
+  host: "127.0.0.1"
+  port: 5050
+  debug: true
+  workers: 4  # gunicorn worker 数量 (生产环境)
+
+database:
+  # 支持: sqlite / mysql / postgresql
+  type: sqlite
+  # sqlite: 文件路径 (相对于项目根目录)
+  # mysql: mysql+pymysql://user:password@host:port/dbname
+  # postgresql: postgresql+psycopg2://user:password@host:port/dbname
+  url: ""
+  # sqlite 文件名 (仅 type=sqlite 时使用)
+  sqlite_path: "instance/budget.db"
+  pool_size: 10
+  pool_recycle: 3600
+
+security:
+  secret_key: ""  # 留空则自动生成随机 key
+  # 允许的文件扩展名
+  allowed_extensions:
+    - xlsx
+    - xls
+    - db
+    - sqlite
+    - sqlite3
+    - json
+    - csv
+
+upload:
+  max_content_length: 52428800  # 50MB
+  upload_dir: "uploads"
+  export_dir: "exports"
+
+pagination:
+  per_page: 50

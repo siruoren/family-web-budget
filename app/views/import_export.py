@@ -1,6 +1,8 @@
 """导入导出视图 - Excel 历史导入 / 导出指定月份年份"""
 import os
+import tempfile
 from datetime import datetime
+from io import BytesIO
 from flask import (
     Blueprint, render_template, request, redirect, url_for, flash,
     jsonify, send_file, current_app,
@@ -15,13 +17,9 @@ from ..services.exporter import (
     export_json, export_excel, export_sqlite, import_sqlite_db,
     import_json_file,
 )
+from ..utils import allowed_file
 
 bp = Blueprint("import_export", __name__)
-
-
-def _allowed(filename: str) -> bool:
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    return ext in current_app.config["ALLOWED_EXTENSIONS"]
 
 
 @bp.route("/io")
@@ -40,7 +38,7 @@ def import_excel_view():
     if not f or not f.filename:
         flash("请选择 Excel 文件", "error")
         return redirect(url_for("import_export.index"))
-    if not _allowed(f.filename):
+    if not allowed_file(f.filename):
         flash("不支持的文件类型", "error")
         return redirect(url_for("import_export.index"))
     fname = secure_filename(f.filename) or "upload.xlsx"
@@ -89,7 +87,7 @@ def init_structure():
     src = request.form.get("source", "sample")
     if src == "upload":
         f = request.files.get("file")
-        if not f or not f.filename or not _allowed(f.filename):
+        if not f or not f.filename or not allowed_file(f.filename):
             flash("请上传有效的 Excel 文件", "error")
             return redirect(url_for("import_export.index"))
         fname = secure_filename(f.filename) or "upload.xlsx"
@@ -146,7 +144,6 @@ def export_excel_view():
 @bp.route("/export/sqlite")
 def export_sqlite_view():
     """导出指定月份 / 年份的 SQLite 数据库"""
-    import tempfile
     year = request.args.get("year", type=int)
     month = request.args.get("month", type=int)
     name = f"budget_{year or 'all'}-{month or 'all'}.db"
@@ -159,5 +156,4 @@ def export_sqlite_view():
 
 
 def io_bytes(data: bytes):
-    from io import BytesIO
     return BytesIO(data)

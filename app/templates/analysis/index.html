@@ -60,12 +60,18 @@ const YEAR_TO = {{ year_to }};
 const COLORS = ["#2563eb","#16a34a","#dc2626","#d97706","#7c3aed",
   "#0891b2","#db2777","#65a30d","#475569","#0ea5e9","#f59e0b","#10b981"];
 
-function fmtMoney(v){return Number(v||0).toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2})}
+// fmtMoney 已在 app.js 中全局定义
+
+async function safeFetch(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  return res.json();
+}
 
 (async function(){
+  try {
   // 1) 趋势图
-  const seriesRes = await fetch(`/api/analysis/series?year_from=${YEAR_FROM}&month_from=1&year_to=${YEAR_TO}&month_to=12`);
-  const seriesData = await seriesRes.json();
+  const seriesData = await safeFetch(`/api/analysis/series?year_from=${YEAR_FROM}&month_from=1&year_to=${YEAR_TO}&month_to=12`);
   const series = seriesData.series || [];
   new Chart(document.getElementById("trendChart"), {
     type: "bar",
@@ -84,8 +90,7 @@ function fmtMoney(v){return Number(v||0).toLocaleString("zh-CN",{minimumFraction
   });
 
   // 2) 收入/支出结构
-  const trendsRes = await fetch(`/api/analysis/trends?year_from=${YEAR_FROM}&year_to=${YEAR_TO}`);
-  const trendsData = await trendsRes.json();
+  const trendsData = await safeFetch(`/api/analysis/trends?year_from=${YEAR_FROM}&year_to=${YEAR_TO}`);
   const trends = trendsData.trends || [];
 
   const incomeTrends = trends.filter(t=>t.item.category==="收入");
@@ -106,8 +111,7 @@ function fmtMoney(v){return Number(v||0).toLocaleString("zh-CN",{minimumFraction
   if(expenseTrends.length) makePie("expensePie", expenseTrends);
 
   // 3) 未来资产预测
-  const forecastRes = await fetch("/api/analysis/forecast?months=12");
-  const fc = await forecastRes.json();
+  const fc = await safeFetch("/api/analysis/forecast?months=12");
   if(fc.history && fc.history.length){
     new Chart(document.getElementById("forecastChart"), {
       type:"line",
@@ -126,38 +130,66 @@ function fmtMoney(v){return Number(v||0).toLocaleString("zh-CN",{minimumFraction
         plugins:{legend:{position:"top"}},
         scales:{y:{ticks:{callback:v=>fmtMoney(v)}}} }
     });
-    document.getElementById("forecastNotes").innerHTML =
-      `月均净额: <b>${fmtMoney(fc.monthly_net)}</b> 元 · ` +
-      `月增长率约 <b>${fc.growth_rate}%</b> · ` +
-      `线性斜率 <b>${fmtMoney(fc.slope)}</b> 元/月`;
+    const notes = document.getElementById("forecastNotes");
+    notes.textContent = "";
+    const b1 = document.createElement("b"); b1.textContent = fmtMoney(fc.monthly_net);
+    const b2 = document.createElement("b"); b2.textContent = (fc.growth_rate ?? 0) + "%";
+    const b3 = document.createElement("b"); b3.textContent = fmtMoney(fc.slope);
+    notes.append("月均净额: ", b1, " 元 · 月增长率约 ", b2, " · 线性斜率 ", b3, " 元/月");
   } else {
     document.getElementById("forecastNotes").textContent = fc.note || "暂无数据";
   }
 
   // 4) 各项目历史趋势与建议
   const container = document.getElementById("itemTrends");
-  if(!trends.length){ container.innerHTML = '<div class="empty-state">暂无条目数据</div>'; return; }
-  container.innerHTML = "";
+  if(!trends.length){
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "暂无条目数据";
+    container.textContent = "";
+    container.appendChild(empty);
+    return;
+  }
+  container.textContent = "";
   const groups = { "收入": [], "支出": [], "结余": [], "其他": [] };
   trends.forEach(t=>{ (groups[t.item.category] || (groups["其他"])).push(t); });
   for(const cat of ["收入","支出","结余"]){
     if(!groups[cat].length) continue;
     const block = document.createElement("div");
-    block.innerHTML = `<h3 class="section-title">${cat} 类 (${groups[cat].length})</h3>`;
+    const h3 = document.createElement("h3");
+    h3.className = "section-title";
+    h3.textContent = cat + " 类 (" + groups[cat].length + ")";
+    block.appendChild(h3);
     const tbl = document.createElement("table");
-    tbl.innerHTML = `<thead><tr><th>条目</th><th>归属</th><th class="num">月均</th><th>趋势</th><th>斜率</th><th>建议</th></tr></thead><tbody></tbody>`;
-    const tb = tbl.querySelector("tbody");
+    const thead = tbl.createTHead();
+    const hr = thead.insertRow();
+    ["条目","归属","月均","趋势","斜率","建议"].forEach(h => {
+      const th = document.createElement("th");
+      if(h==="月均"||h==="斜率") th.className = "num";
+      th.textContent = h;
+      hr.appendChild(th);
+    });
+    const tb = tbl.createTBody();
     groups[cat].forEach(t=>{
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${t.item.name}</td><td>${t.item.owner}</td>
-        <td class="num">${fmtMoney(t.avg)}</td>
-        <td>${t.trend}</td>
-        <td class="num">${t.slope}</td>
-        <td>${t.advice}</td>`;
-      tb.appendChild(tr);
+      const tr = tb.insertRow();
+      const c1 = tr.insertCell(); c1.textContent = t.item.name || "";
+      const c2 = tr.insertCell(); c2.textContent = t.item.owner || "";
+      const c3 = tr.insertCell(); c3.className = "num"; c3.textContent = fmtMoney(t.avg);
+      const c4 = tr.insertCell(); c4.textContent = t.trend || "";
+      const c5 = tr.insertCell(); c5.className = "num"; c5.textContent = t.slope ?? "";
+      const c6 = tr.insertCell(); c6.textContent = t.advice || "";
     });
     block.appendChild(tbl);
     container.appendChild(block);
+  }
+  } catch (err) {
+    console.error("分析数据加载失败:", err);
+    const container = document.getElementById("itemTrends");
+    container.textContent = "";
+    const msg = document.createElement("div");
+    msg.className = "empty-state";
+    msg.textContent = "数据加载失败, 请刷新重试";
+    container.appendChild(msg);
   }
 })();
 </script>

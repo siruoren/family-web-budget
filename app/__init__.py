@@ -14,6 +14,7 @@ db = SQLAlchemy()
 
 def create_app(config_name: str = "default") -> Flask:
     app = Flask(__name__, instance_relative_config=False)
+    app.version = "1.1.0"
 
     # 加载配置
     from .config import config_map
@@ -56,6 +57,10 @@ def create_app(config_name: str = "default") -> Flask:
     # 上下文: 注入月份选择器等通用变量
     from .services.context import inject_globals, ensure_user
     app.context_processor(inject_globals)
+
+    # CSRF 保护 (轻量实现, 无需 Flask-WTF)
+    from .services.csrf import init_csrf
+    init_csrf(app)
 
     # 每个请求前: 确保会话拥有唯一 user_id (用于并发锁)
     @app.before_request

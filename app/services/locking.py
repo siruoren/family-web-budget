@@ -18,6 +18,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
 
+from flask import g
 from sqlalchemy import select, delete, func
 
 from .. import db
@@ -29,24 +30,31 @@ DEFAULT_TTL = 180
 
 # -------------------------------------------------------------- 配置读取
 def get_setting(key: str, default=None):
-    """从配置表读取单个配置值 (自动按 vtype 转换)"""
+    """从配置表读取单个配置值 (自动按 vtype 转换), 带请求级缓存"""
+    cache = getattr(g, "_settings_cache", None)
+    if cache is not None and key in cache:
+        return cache[key]
     s = db.session.execute(
         select(Setting).where(Setting.key == key)
     ).scalars().first()
     if not s or s.value in (None, ""):
-        return default
-    if s.vtype == "int":
+        result = default
+    elif s.vtype == "int":
         try:
-            return int(s.value)
+            result = int(s.value)
         except (ValueError, TypeError):
-            return default
-    if s.vtype == "bool":
-        return s.value.lower() in ("1", "true", "yes", "on")
-    return s.value
+            result = default
+    elif s.vtype == "bool":
+        result = s.value.lower() in ("1", "true", "yes", "on")
+    else:
+        result = s.value
+    if cache is not None:
+        cache[key] = result
+    return result
 
 
 def set_setting(key: str, value, vtype: str = "str"):
-    """写入配置 (upsert)"""
+    """写入配置 (upsert), 同时刷新请求级缓存"""
     s = db.session.execute(
         select(Setting).where(Setting.key == key)
     ).scalars().first()
@@ -58,6 +66,9 @@ def set_setting(key: str, value, vtype: str = "str"):
             key=key, value=str(value), vtype=vtype,
         ))
     db.session.commit()
+    cache = getattr(g, "_settings_cache", None)
+    if cache is not None:
+        cache.pop(key, None)
 
 
 def get_lock_ttl() -> int:

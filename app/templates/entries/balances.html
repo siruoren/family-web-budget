@@ -10,6 +10,7 @@
 </div>
 
 <form method="post" action="{{ url_for('entries.balances_save', year=year, month=month) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% set ns = namespace(groups=[], last_type='') %}
   {% for a in accounts %}
     {% if a.type != ns.last_type %}

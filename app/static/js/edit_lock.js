@@ -63,7 +63,17 @@
     var el = lockStatusEl(rt, rid);
     if (el) {
       el.setAttribute("data-mine", "1");
-      el.innerHTML = '<span class="locked-by-me">编辑中 · <span class="countdown" data-k="' + k + '">' + secs + '</span>s</span>';
+      el.textContent = "";
+      var span = document.createElement("span");
+      span.className = "locked-by-me";
+      span.textContent = "编辑中 · ";
+      var cd = document.createElement("span");
+      cd.className = "countdown";
+      cd.setAttribute("data-k", k);
+      cd.textContent = secs;
+      span.appendChild(cd);
+      span.appendChild(document.createTextNode("s"));
+      el.appendChild(span);
     }
     startHeartbeat(rt, rid);
     startCountdown(rt, rid, secs);
@@ -77,7 +87,11 @@
     if (el) {
       el.setAttribute("data-locked", "1");
       el.setAttribute("data-who", who);
-      el.innerHTML = '<span class="locked">已锁定 · ' + who + ' (稍后刷新再试)</span>';
+      el.textContent = "";
+      var span = document.createElement("span");
+      span.className = "locked";
+      span.textContent = "已锁定 · " + who + " (稍后刷新再试)";
+      el.appendChild(span);
     }
     var tr = document.getElementById((rt === "entry" ? "item-" : "acc-") + rid);
     if (tr) tr.classList.add("row-locked");
@@ -123,7 +137,13 @@
         stopTimer(heartbeatTimers, k);
         delete myLocks[k];
         var el = lockStatusEl(rt, rid);
-        if (el) el.innerHTML = '<span class="muted">锁已过期</span>';
+        if (el) {
+          el.textContent = "";
+          var span = document.createElement("span");
+          span.className = "muted";
+          span.textContent = "锁已过期";
+          el.appendChild(span);
+        }
         return;
       }
       var cd = document.querySelector('.countdown[data-k="' + k + '"]');
@@ -153,7 +173,7 @@
     var el = lockStatusEl(rt, rid);
     if (el) {
       el.removeAttribute("data-mine");
-      el.innerHTML = "";
+      el.textContent = "";
     }
   }
 

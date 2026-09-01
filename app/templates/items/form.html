@@ -5,6 +5,7 @@
 <h2 class="section-title">{% if item %}编辑条目{% else %}新增条目{% endif %}</h2>
 <div class="card">
   <form method="post" action="{% if item %}{{ url_for('items.edit', item_id=item.id) }}{% else %}{{ url_for('items.new') }}{% endif %}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-row">
       <label>条目名称 *</label>
       <input type="text" name="name" required value="{{ item.name if item else '' }}" style="min-width:240px;">

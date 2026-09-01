@@ -2,3 +2,5 @@ flask>=3.0.3
 flask-sqlalchemy>=3.1.1
 sqlalchemy>=2.0.16
 openpyxl>=3.1.5
+pyyaml>=6.0
+gunicorn>=21.2.0

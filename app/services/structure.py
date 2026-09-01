@@ -7,6 +7,7 @@
   4. 用 SheetColumn 登记每个 sheet 的 大类->小项 列结构 (驱动多级子菜单)
 全部幂等: 重复执行不会重复创建, 只补齐缺失。
 """
+import os
 import openpyxl
 from sqlalchemy import select, func
 
@@ -37,7 +38,7 @@ def _ensure_sheet_records(path: str) -> int:
             continue
         db.session.add(Sheet(
             name=info.name, kind=info.kind, sort_order=info.order,
-            is_active=True, source_file=path.split("/")[-1],
+            is_active=True, source_file=os.path.basename(path),
         ))
         added += 1
     db.session.commit()

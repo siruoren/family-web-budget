@@ -1,0 +1,131 @@
+name: Build and Release
+
+on:
+  push:
+    branches: '*'
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      # ── 检出代码 ──
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 读取版本号 ──
+      - name: Read version from version.txt
+        id: version
+        run: |
+          VERSION=$(tr -d '[:space:]' < version.txt)
+          if [ -z "$VERSION" ]; then
+            echo "::error::version.txt is empty!"
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Building version: $VERSION"
+
+      # ── 读取构建信息 ──
+      - name: Build info
+        id: info
+        run: |
+          echo "build_time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+          echo "git_sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      # ── 设置 Docker Buildx ──
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── 构建 Docker 镜像 ──
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          tags: |
+            family-web-budget:${{ steps.version.outputs.version }}
+            family-web-budget:latest
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+          labels: |
+            org.opencontainers.image.title=family-web-budget
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ steps.info.outputs.build_time }}
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ── 保存镜像为 tar.gz 文件 ──
+      - name: Save Docker image
+        id: save
+        run: |
+          IMAGE_NAME="family-web-budget:${{ steps.version.outputs.version }}"
+          export TAR_NAME="family-web-budget-${{ steps.version.outputs.version }}.tar.gz"
+          echo "💾 Saving image $IMAGE_NAME → $TAR_NAME"
+          docker save "$IMAGE_NAME" | gzip > "$TAR_NAME"
+          ls -lh "$TAR_NAME"
+          echo "TAR_NAME=$TAR_NAME" >> $GITHUB_ENV
+
+      # ── 生成校验文件 ──
+      - name: Generate checksum
+        run: |
+          sha256sum "$TAR_NAME" > "${TAR_NAME}.sha256"
+          echo "✅ Checksum:"
+          cat "${TAR_NAME}.sha256"
+
+      # ── 上传构建产物 ──
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: family-web-budget-${{ steps.version.outputs.version }}
+          path: |
+            ${{ env.TAR_NAME }}
+            ${{ env.TAR_NAME }}.sha256
+          retention-days: 30
+          if-no-files-found: error
+
+      # ── 创建 GitHub Release（仅 tag 触发）──
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          body: |
+            ## family-web-budget v${{ steps.version.outputs.version }}
+
+            **构建时间**: ${{ steps.info.outputs.build_time }}
+            **Git SHA**: ${{ steps.info.outputs.git_sha }}
+
+            ### 下载安装
+
+            ```bash
+            # 下载镜像文件
+            wget family-web-budget-${{ steps.version.outputs.version }}.tar.gz
+
+            # 校验文件完整性
+            sha256sum -c family-web-budget-${{ steps.version.outputs.version }}.tar.gz.sha256
+
+            # 加载镜像
+            docker load -i family-web-budget-${{ steps.version.outputs.version }}.tar.gz
+
+            # 运行容器
+            docker run -d --name family-web-budget \
+              -p 5050:5050 \
+              -v ./games:/games \
+              -v ./config.yml:/app/config.yml \
+              family-web-budget:${{ steps.version.outputs.version }}  
+            ```
+
+            浏览器访问 http://localhost:5050
+          files: |
+            ${{ env.TAR_NAME }}
+            ${{ env.TAR_NAME }}.sha256
+          generate_release_notes: true
+          draft: false
+          prerelease: false

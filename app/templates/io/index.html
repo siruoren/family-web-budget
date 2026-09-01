@@ -12,6 +12,7 @@
     <form method="post" enctype="multipart/form-data"
           action="{{ url_for('import_export.import_excel_view') }}"
           style="margin-bottom:1rem;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="file" name="file" accept=".xlsx,.xls" required style="margin-bottom:.5rem;">
       <label>去重策略:
         <select name="strategy">
@@ -24,6 +25,7 @@
 
     <form method="post" action="{{ url_for('import_export.import_sample') }}"
           onsubmit="return confirm('一键导入示例 Excel 数据 (家庭统计表)? 现有相同周期数据会被跳过。')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label>去重策略:
         <select name="strategy">
           <option value="skip">跳过已存在</option>
@@ -42,6 +44,7 @@
 
     <form method="post" action="{{ url_for('import_export.init_structure') }}"
           onsubmit="return confirm('从 Excel 初始化结构? 已有结构会被补齐 (幂等)。')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn btn-block">
         从示例 Excel 初始化结构 (sheet + 大类/小项)
       </button>
@@ -50,6 +53,7 @@
     <form method="post" enctype="multipart/form-data"
           action="{{ url_for('import_export.init_structure') }}"
           style="margin-top:.5rem;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="source" value="upload">
       <input type="file" name="file" accept=".xlsx,.xls" required style="margin-bottom:.5rem;">
       <button type="submit" class="btn btn-secondary btn-block">从上传 Excel 初始化结构</button>

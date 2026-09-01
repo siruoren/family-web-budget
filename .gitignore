@@ -218,3 +218,14 @@ __marimo__/
 .streamlit/secrets.toml
 .workbuddy
 家庭统计表2021年~20260501.xlsx
+
+# 项目数据目录
+uploads/
+exports/
+
+# 本地配置覆盖 (含密码等敏感信息)
+config.local.yml
+
+# Docker
+.docker/
+

@@ -116,6 +116,9 @@ def inject_globals():
     # 用户选择的周期 (从 query / session 读取, 默认当月)
     sel_year = session.get("sel_year", now.year)
     sel_month = session.get("sel_month", now.month)
+    # 侧边栏树: 请求级缓存 (避免同一请求多次构建)
+    if not hasattr(g, "_sidebar_tree"):
+        g._sidebar_tree = _build_sidebar_tree()
     return {
         "current_year": now.year,
         "current_month": now.month,
@@ -126,5 +129,5 @@ def inject_globals():
         "user_label": g.get(
             "user_label", session.get("user_label", "anonymous")
         ),
-        "sidebar_tree": _build_sidebar_tree(),
+        "sidebar_tree": g._sidebar_tree,
     }

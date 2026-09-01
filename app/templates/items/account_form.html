@@ -5,6 +5,7 @@
 <h2 class="section-title">{% if account %}编辑账户{% else %}新增账户{% endif %}</h2>
 <div class="card">
   <form method="post" action="{% if account %}{{ url_for('items.account_edit', acc_id=account.id) }}{% else %}{{ url_for('items.account_new') }}{% endif %}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-row">
       <label>账户名称 *</label>
       <input type="text" name="name" required value="{{ account.name if account else '' }}" style="min-width:240px;">

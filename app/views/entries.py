@@ -12,7 +12,7 @@ from ..models import Entry, Item, Account, BalanceSnapshot
 from ..services.analysis import monthly_summary
 from ..services.locking import (
     acquire_lock, release_lock, heartbeat_lock, list_locks,
-    check_conflict, get_lock_ttl, is_lock_enabled,
+    get_lock_ttl, is_lock_enabled,
 )
 
 bp = Blueprint("entries", __name__)
@@ -95,17 +95,17 @@ def _save_entries(year: int, month: int):
         select(Item).where(Item.is_active == True)
     ).scalars().all()
     user_id = g.user_id
+    # 批量预加载: 当前周期已有条目 + 活跃锁 (避免 N+1 查询)
+    existing_entries = db.session.execute(
+        select(Entry).where(Entry.year == year, Entry.month == month)
+    ).scalars().all()
+    entry_map = {e.item_id: e for e in existing_entries}
+    all_locks = list_locks("entry", year, month)
     for it in items:
         val_raw = request.form.get(f"item_{it.id}", "").strip()
         note = request.form.get(f"note_{it.id}", "").strip()
         if val_raw == "":
-            # 空值 -> 删除已存在的条目 (取消填写)
-            existing = db.session.execute(
-                select(Entry).where(
-                    Entry.year == year, Entry.month == month,
-                    Entry.item_id == it.id,
-                )
-            ).scalars().first()
+            existing = entry_map.pop(it.id, None)
             if existing:
                 db.session.delete(existing)
             continue
@@ -114,20 +114,15 @@ def _save_entries(year: int, month: int):
         except ValueError:
             flash(f"条目 {it.name} 的值 '{val_raw}' 不是有效数字", "error")
             continue
-        # 冲突检测: 若该条目被他人锁定, 跳过并记录冲突
-        conflict = check_conflict("entry", it.id, user_id, year, month)
-        if conflict:
+        # 冲突检测: 批量锁数据中查找
+        lk = all_locks.get(it.id)
+        if lk and lk["user_id"] != user_id:
             conflicts.append({
                 "id": it.id, "name": it.name,
-                "who": conflict["user_label"],
+                "who": lk["user_label"],
             })
             continue
-        existing = db.session.execute(
-            select(Entry).where(
-                Entry.year == year, Entry.month == month,
-                Entry.item_id == it.id,
-            )
-        ).scalars().first()
+        existing = entry_map.get(it.id)
         if existing:
             existing.value = val
             existing.note = note
@@ -214,17 +209,19 @@ def balances_save():
     user_id = g.user_id
     saved = 0
     conflicts = []
+    # 批量预加载: 当前周期已有快照 + 活跃锁 (避免 N+1 查询)
+    existing_snaps = db.session.execute(
+        select(BalanceSnapshot).where(
+            BalanceSnapshot.year == year, BalanceSnapshot.month == month
+        )
+    ).scalars().all()
+    snap_map = {s.account_id: s for s in existing_snaps}
+    all_locks = list_locks("balance", year, month)
     for a in accounts:
         raw = request.form.get(f"acc_{a.id}", "").strip()
         note = request.form.get(f"note_{a.id}", "").strip()
         if raw == "":
-            existing = db.session.execute(
-                select(BalanceSnapshot).where(
-                    BalanceSnapshot.year == year,
-                    BalanceSnapshot.month == month,
-                    BalanceSnapshot.account_id == a.id,
-                )
-            ).scalars().first()
+            existing = snap_map.pop(a.id, None)
             if existing:
                 db.session.delete(existing)
             continue
@@ -233,21 +230,15 @@ def balances_save():
         except ValueError:
             flash(f"账户 {a.name} 的值 '{raw}' 不是有效数字", "error")
             continue
-        # 冲突检测: 若该账户被他人锁定, 跳过并记录
-        conflict = check_conflict("balance", a.id, user_id, year, month)
-        if conflict:
+        # 冲突检测: 批量锁数据中查找
+        lk = all_locks.get(a.id)
+        if lk and lk["user_id"] != user_id:
             conflicts.append({
                 "id": a.id, "name": a.name,
-                "who": conflict["user_label"],
+                "who": lk["user_label"],
             })
             continue
-        existing = db.session.execute(
-            select(BalanceSnapshot).where(
-                BalanceSnapshot.year == year,
-                BalanceSnapshot.month == month,
-                BalanceSnapshot.account_id == a.id,
-            )
-        ).scalars().first()
+        existing = snap_map.get(a.id)
         if existing:
             existing.value = val
             existing.note = note

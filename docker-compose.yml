@@ -1,0 +1,23 @@
+services:
+  web:
+    build: .
+    container_name: family-budget
+    ports:
+      - "5050:5050"
+    volumes:
+      - ./:/app
+      - db_data:/app/instance
+      - upload_data:/app/uploads
+      - export_data:/app/exports
+    environment:
+      - FLASK_CONFIG=prod
+      - SECRET_KEY=${SECRET_KEY:-}
+      - DATABASE_URL=${DATABASE_URL:-}
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=5050
+    restart: unless-stopped
+
+volumes:
+  db_data:
+  upload_data:
+  export_data:

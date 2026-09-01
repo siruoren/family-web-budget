@@ -14,6 +14,7 @@
     <code class="setting-code">{{ my_user_id }}</code>
   </div>
   <form method="post" action="{{ url_for('settings.update_profile') }}" class="form-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>我的昵称:</label>
     <input type="text" name="user_label" value="{{ my_user_label }}"
            placeholder="输入昵称 (编辑锁状态会显示谁在编辑)" required
@@ -29,6 +30,7 @@
     <small class="muted" style="margin-left:.5rem;">多页面同时编辑时自动加锁, 防止分支冲突</small>
   </div>
   <form method="post" action="{{ url_for('settings.update_lock_config') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="grid grid-2">
       <div>
         <div class="form-row">
@@ -80,11 +82,13 @@
   </div>
   <div class="action-row">
     <form method="post" action="{{ url_for('settings.cleanup_expired_locks') }}" style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn btn-sm btn-secondary">清理过期锁</button>
     </form>
     <form method="post" action="{{ url_for('settings.force_release_all_locks') }}"
           onsubmit="return confirm('将清空所有活跃锁, 确认?')"
           style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="text" name="confirm" placeholder="输入'确认清空'"
              style="width:140px;">
       <button type="submit" class="btn btn-sm btn-danger">一键清空所有锁</button>
@@ -115,6 +119,7 @@
           <form method="post" action="{{ url_for('settings.force_release_lock', lock_id=lk.id) }}"
                 onsubmit="return confirm('强制释放锁 #{{ lk.id }}?')"
                 style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn-delete" title="强制释放">✕</button>
           </form>
         </td>
