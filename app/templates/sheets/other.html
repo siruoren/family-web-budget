@@ -7,7 +7,7 @@
   <h2>{{ sheet.name }}</h2>
   <p class="muted">该工作表 ({{ sheet.kind }}) 的结构暂未解析为可编辑账户/条目。</p>
   <div style="margin-top:.75rem;">
-    <a class="btn" href="{{ url_for('import_export.index') }}">导入导出 / 初始化结构</a>
+    <a class="btn" href="{{ url_for('settings.index') }}">去系统配置初始化</a>
     <a class="btn btn-secondary" href="{{ url_for('dashboard.index') }}">返回首页</a>
   </div>
 </div>

@@ -5,6 +5,7 @@
   2. 并发锁配置 (TTL / 开关 / 心跳间隔)
   3. 活跃锁管理 (查看 / 强制释放)
   4. 系统信息 (数据库 / 表行数 / 运行环境)
+  5. 数据导入与结构初始化
 """
 import os
 import platform
@@ -15,6 +16,7 @@ from flask import (
     session, flash, g, current_app,
 )
 from sqlalchemy import select, func
+from werkzeug.utils import secure_filename
 
 from .. import db
 from ..models import Item, Entry, Account, BalanceSnapshot, ImportLog, EditLock
@@ -22,6 +24,7 @@ from ..services.locking import (
     get_setting, set_setting, get_lock_ttl, is_lock_enabled,
     list_all_locks, force_release, force_release_all, cleanup_expired,
 )
+from ..utils import allowed_file
 
 bp = Blueprint("settings", __name__, url_prefix="/settings")
 
@@ -72,12 +75,35 @@ def index():
         select(Setting).order_by(Setting.key)
     ).scalars().all()
 
+    # ---- 导入日志 ----
+    logs = db.session.execute(
+        select(ImportLog).order_by(ImportLog.imported_at.desc()).limit(10)
+    ).scalars().all()
+
     return render_template(
         "settings/index.html",
         stats=stats, sys_info=sys_info, lock_config=lock_config,
         active_locks=active_locks, all_settings=all_settings,
         my_user_id=g.user_id, my_user_label=session.get("user_label", ""),
+        logs=logs,
     )
+
+
+# -------------------------------------------------------------- 用户名设置 (首次弹窗)
+@bp.route("/username", methods=["POST"])
+def set_username():
+    """首次进入设置用户名 (弹窗表单)"""
+    label = request.form.get("user_label", "").strip()
+    if not label:
+        flash("用户名不能为空", "error")
+        return redirect(request.referrer or url_for("dashboard.index"))
+    if len(label) > 32:
+        flash("用户名过长 (最多 32 字符)", "error")
+        return redirect(request.referrer or url_for("dashboard.index"))
+    session["user_label"] = label
+    g.user_label = label
+    flash(f"欢迎, {label}!", "success")
+    return redirect(request.referrer or url_for("dashboard.index"))
 
 
 # -------------------------------------------------------------- 用户昵称
@@ -94,6 +120,74 @@ def update_profile():
     session["user_label"] = label
     g.user_label = label
     flash(f"已设置昵称为: {label}", "success")
+    return redirect(url_for("settings.index"))
+
+
+# -------------------------------------------------------------- 数据导入与初始化
+@bp.route("/import/excel", methods=["POST"])
+def import_excel():
+    """从系统配置页导入 Excel"""
+    f = request.files.get("file")
+    if not f or not f.filename or not allowed_file(f.filename):
+        flash("请选择有效的 Excel 文件 (.xlsx/.xls)", "error")
+        return redirect(url_for("settings.index"))
+    fname = secure_filename(f.filename) or "upload.xlsx"
+    upload_dir = current_app.config.get("UPLOAD_FOLDER", "uploads")
+    os.makedirs(upload_dir, exist_ok=True)
+    fpath = os.path.join(upload_dir, fname)
+    f.save(fpath)
+    strategy = request.form.get("strategy", "skip")
+    from ..services.importer import import_excel as _do_import
+    result = _do_import(fpath, strategy=strategy)
+    flash(
+        f"导入完成: {result.get('imported', 0)} 条导入, "
+        f"{result.get('skipped', 0)} 条跳过, "
+        f"{result.get('errors', 0)} 条错误",
+        "success" if result.get("errors", 0) == 0 else "warning",
+    )
+    return redirect(url_for("settings.index"))
+
+
+@bp.route("/import/sample", methods=["POST"])
+def import_sample():
+    """从系统配置页一键导入示例数据"""
+    strategy = request.form.get("strategy", "skip")
+    sample = current_app.config.get("SAMPLE_EXCEL")
+    if not sample or not os.path.exists(str(sample)):
+        flash("示例 Excel 文件不存在", "error")
+        return redirect(url_for("settings.index"))
+    from ..services.importer import import_excel as _do_import
+    result = _do_import(str(sample), strategy=strategy)
+    flash(
+        f"示例数据导入完成: {result.get('imported', 0)} 条导入, "
+        f"{result.get('skipped', 0)} 条跳过",
+        "success",
+    )
+    return redirect(url_for("settings.index"))
+
+
+@bp.route("/init-structure", methods=["POST"])
+def init_structure():
+    """从系统配置页初始化结构 (左侧菜单)"""
+    source = request.form.get("source", "sample")
+    if source == "upload":
+        f = request.files.get("file")
+        if not f or not f.filename or not allowed_file(f.filename):
+            flash("请上传有效的 Excel 文件", "error")
+            return redirect(url_for("settings.index"))
+        fname = secure_filename(f.filename) or "init.xlsx"
+        upload_dir = current_app.config.get("UPLOAD_FOLDER", "uploads")
+        os.makedirs(upload_dir, exist_ok=True)
+        fpath = os.path.join(upload_dir, fname)
+        f.save(fpath)
+    else:
+        fpath = str(current_app.config.get("SAMPLE_EXCEL"))
+        if not os.path.exists(fpath):
+            flash("示例 Excel 文件不存在", "error")
+            return redirect(url_for("settings.index"))
+    from ..services.structure import initialize_structure_from_excel
+    initialize_structure_from_excel(fpath)
+    flash("结构初始化完成 (幂等, 已补齐缺失项)", "success")
     return redirect(url_for("settings.index"))
 
 

@@ -4,6 +4,92 @@
 {% block content %}
 <h2 class="section-title">系统配置 · 后台管理</h2>
 
+{# ==================== 数据导入与结构初始化 ==================== #}
+<div class="card">
+  <div class="section-title" style="margin-top:0;">
+    <span class="badge tag-income">数据导入与初始化</span>
+    <small class="muted" style="margin-left:.5rem;">从 Excel 导入历史数据 / 初始化左侧菜单结构</small>
+  </div>
+
+  <div class="grid grid-2">
+    <div>
+      <h4 style="margin:.5rem 0;">导入历史数据 (Excel)</h4>
+      <form method="post" enctype="multipart/form-data"
+            action="{{ url_for('settings.import_excel') }}"
+            style="margin-bottom:1rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="file" name="file" accept=".xlsx,.xls" required style="margin-bottom:.5rem;">
+        <label>去重策略:
+          <select name="strategy">
+            <option value="skip">跳过已存在 (默认)</option>
+            <option value="overwrite">覆盖已存在</option>
+          </select>
+        </label>
+        <button type="submit" class="btn btn-block" style="margin-top:.5rem;">导入 Excel</button>
+      </form>
+
+      <h4 style="margin:.5rem 0;">一键导入示例数据</h4>
+      <form method="post" action="{{ url_for('settings.import_sample') }}"
+            onsubmit="return confirm('一键导入示例 Excel 数据? 现有相同周期数据会被跳过。')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>去重策略:
+          <select name="strategy">
+            <option value="skip">跳过已存在</option>
+            <option value="overwrite">覆盖已存在</option>
+          </select>
+        </label>
+        <button type="submit" class="btn btn-secondary btn-block" style="margin-top:.5rem;">
+          导入示例数据 (家庭统计表2021~2026)
+        </button>
+      </form>
+    </div>
+
+    <div>
+      <h4 style="margin:.5rem 0;">初始化结构 (左侧菜单)</h4>
+      <p class="muted" style="font-size:.82rem;">从 Excel 初始化工作表登记 + 账户大类结构 (幂等操作)</p>
+      <form method="post" action="{{ url_for('settings.init_structure') }}"
+            onsubmit="return confirm('从示例 Excel 初始化结构? 已有结构会被补齐。')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-block" style="margin-top:.5rem;">
+          从示例 Excel 初始化结构
+        </button>
+      </form>
+      <form method="post" enctype="multipart/form-data"
+            action="{{ url_for('settings.init_structure') }}"
+            style="margin-top:.5rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="source" value="upload">
+        <input type="file" name="file" accept=".xlsx,.xls" required style="margin-bottom:.5rem;">
+        <button type="submit" class="btn btn-secondary btn-block">从上传 Excel 初始化结构</button>
+      </form>
+    </div>
+  </div>
+
+  {% if logs %}
+  <details style="margin-top:1rem;">
+    <summary class="section-title" style="cursor:pointer;font-size:.9rem;">导入历史日志 ({{ logs|length }})</summary>
+    <table style="margin-top:.5rem;">
+      <thead>
+        <tr><th>时间</th><th>来源</th><th>类型</th><th class="num">导入</th><th class="num">去重</th><th class="num">错误</th><th>策略</th></tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td>{{ log.imported_at.strftime('%Y-%m-%d %H:%M') if log.imported_at else '—' }}</td>
+          <td>{{ log.source_file }}</td>
+          <td><span class="badge">{{ log.kind }}</span></td>
+          <td class="num positive">{{ log.rows_imported }}</td>
+          <td class="num">{{ log.rows_skipped }}</td>
+          <td class="num negative">{{ log.rows_error }}</td>
+          <td>{{ log.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+</div>
+
 {# ==================== 用户标识设置 ==================== #}
 <div class="card">
   <div class="section-title" style="margin-top:0;">

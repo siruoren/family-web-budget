@@ -9,41 +9,32 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
-  <nav class="topbar">
-    <a class="brand" href="{{ url_for('dashboard.index') }}">君军之家 · 记账单</a>
-    <div class="nav-links">
-      <a href="{{ url_for('dashboard.index') }}">首页</a>
-      <a href="{{ url_for('entries.index') }}">月度条目</a>
-      <a href="{{ url_for('entries.edit') }}">在线填写</a>
-      <a href="{{ url_for('entries.balances') }}">月末结余</a>
-      <a href="{{ url_for('items.index') }}">项目条目</a>
-      <a href="{{ url_for('items.accounts') }}">账户管理</a>
-      <a href="{{ url_for('analysis.index') }}">智能分析</a>
-      <a href="{{ url_for('import_export.index') }}">导入导出</a>
-      <a href="{{ url_for('admin.index') }}">后台迁移</a>
-      <a href="{{ url_for('settings.index') }}">系统配置</a>
+
+  {# ===== 用户名输入弹窗 (首次打开) ===== #}
+  {% if not user_label or user_label.startswith('用户') %}
+  <div id="username-modal" class="modal-overlay">
+    <div class="modal-box">
+      <h3>请输入您的用户名</h3>
+      <p class="muted">用于标识编辑操作归属, 后续可在系统配置中修改</p>
+      <form id="username-form" method="post" action="{{ url_for('settings.set_username') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="user_label" id="username-input"
+               placeholder="例如: 李 / 朱 / 君军"
+               required maxlength="32"
+               autocomplete="off" autofocus>
+        <button type="submit" class="btn btn-block" style="margin-top:.75rem;">确认进入</button>
+      </form>
     </div>
-    <form class="period-picker" method="get" action="{{ url_for('entries.index') }}">
-      <select name="year">
-        {% for y in range(current_year - 10, current_year + 2) %}
-          <option value="{{ y }}" {% if y == sel_year %}selected{% endif %}>{{ y }}年</option>
-        {% endfor %}
-      </select>
-      <select name="month">
-        {% for m in range(1, 13) %}
-          <option value="{{ m }}" {% if m == sel_month %}selected{% endif %}>{{ m }}月</option>
-        {% endfor %}
-      </select>
-      <button type="submit" class="btn btn-sm">切换</button>
-    </form>
-  </nav>
+  </div>
+  {% endif %}
 
   <div class="layout">
     <aside class="sidebar">
       <div class="sidebar-head">
-        <span>工作表导航</span>
-        <a class="sidebar-refresh" href="{{ url_for('import_export.index') }}" title="管理/初始化结构">⚙</a>
+        <a class="brand" href="{{ url_for('dashboard.index') }}">君军之家 · 记账单</a>
       </div>
+
+      {# ===== 工作表导航 ===== #}
       {% if sidebar_tree %}
       <ul class="tree">
         {% for node in sidebar_tree %}
@@ -99,9 +90,22 @@
       {% else %}
       <div class="sidebar-empty">
         <p>暂无工作表结构</p>
-        <a class="btn btn-sm" href="{{ url_for('import_export.index') }}">去初始化</a>
+        <a class="btn btn-sm" href="{{ url_for('settings.index') }}">去系统配置初始化</a>
       </div>
       {% endif %}
+
+      {# ===== 底部系统导航 ===== #}
+      <div class="sidebar-nav">
+        <a href="{{ url_for('dashboard.index') }}">首页</a>
+        <a href="{{ url_for('entries.index') }}">月度条目</a>
+        <a href="{{ url_for('entries.edit') }}">在线填写</a>
+        <a href="{{ url_for('entries.balances') }}">月末结余</a>
+        <a href="{{ url_for('items.index') }}">项目条目</a>
+        <a href="{{ url_for('items.accounts') }}">账户管理</a>
+        <a href="{{ url_for('analysis.index') }}">智能分析</a>
+        <a href="{{ url_for('import_export.index') }}">导入导出</a>
+        <a href="{{ url_for('settings.index') }}">系统配置</a>
+      </div>
     </aside>
 
     <main class="container main-with-sidebar">
@@ -120,7 +124,7 @@
   </div>
 
   <footer class="footer">
-    <span>家庭记账单 · MVT (Flask + SQLAlchemy + SQLite) · {{ current_year }}</span>
+    <span>家庭记账单 · {{ user_label or '未命名' }} · {{ current_year }}</span>
   </footer>
 
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>

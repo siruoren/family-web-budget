@@ -6,12 +6,19 @@
   <h2 class="section-title" style="margin:0;border:none;padding:0;">
     {{ year }}年{{ month }}月 条目
   </h2>
-  <span style="margin-left:auto;" class="muted">
-    收入 {{ fmt_money(summary.income_total) }} · 支出 {{ fmt_money(summary.expense_total) }} · 净额
-    <span class="{% if summary.net >= 0 %}positive{% else %}negative{% endif %}">
-      {{ fmt_money(summary.net) }}
-    </span>
-  </span>
+  <form class="period-picker" method="get" action="{{ url_for('entries.index') }}" style="margin-left:auto;">
+    <select name="year">
+      {% for y in range(current_year - 10, current_year + 2) %}
+        <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}年</option>
+      {% endfor %}
+    </select>
+    <select name="month">
+      {% for m in range(1, 13) %}
+        <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}月</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-sm">切换</button>
+  </form>
 </div>
 
 <div class="card">
