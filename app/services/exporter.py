@@ -23,9 +23,12 @@ from .. import db
 
 
 # -------------------------------------------------------------- JSON 导出
-def export_json(year: int | None = None, month: int | None = None) -> bytes:
-    """导出指定月份 / 年份的条目 + 结余为 JSON"""
+def export_json(year: int | None = None, month: int | None = None,
+                user_id: str = "") -> bytes:
+    """导出指定月份 / 年份的条目 + 结余为 JSON (按 user_id 隔离)"""
     entry_q = select(Entry, Item).join(Item, Entry.item_id == Item.id)
+    if user_id:
+        entry_q = entry_q.where(Entry.user_id == user_id)
     if year:
         entry_q = entry_q.where(Entry.year == year)
     if month:
@@ -44,6 +47,8 @@ def export_json(year: int | None = None, month: int | None = None) -> bytes:
     bal_q = select(BalanceSnapshot, Account).join(
         Account, BalanceSnapshot.account_id == Account.id
     )
+    if user_id:
+        bal_q = bal_q.where(BalanceSnapshot.user_id == user_id)
     if year:
         bal_q = bal_q.where(BalanceSnapshot.year == year)
     if month:
@@ -71,8 +76,9 @@ def export_json(year: int | None = None, month: int | None = None) -> bytes:
 
 
 # -------------------------------------------------------------- Excel 导出
-def export_excel(year: int | None = None, month: int | None = None) -> BytesIO:
-    """导出为 .xlsx (条目表 + 结余表)"""
+def export_excel(year: int | None = None, month: int | None = None,
+                 user_id: str = "") -> BytesIO:
+    """导出为 .xlsx (条目表 + 结余表, 按 user_id 隔离)"""
     import openpyxl
     from openpyxl.styles import Font, Alignment
 
@@ -87,6 +93,8 @@ def export_excel(year: int | None = None, month: int | None = None) -> BytesIO:
         cell.alignment = Alignment(horizontal="center")
 
     entry_q = select(Entry, Item).join(Item, Entry.item_id == Item.id)
+    if user_id:
+        entry_q = entry_q.where(Entry.user_id == user_id)
     if year:
         entry_q = entry_q.where(Entry.year == year)
     if month:
@@ -108,6 +116,8 @@ def export_excel(year: int | None = None, month: int | None = None) -> BytesIO:
     bal_q = select(BalanceSnapshot, Account).join(
         Account, BalanceSnapshot.account_id == Account.id
     )
+    if user_id:
+        bal_q = bal_q.where(BalanceSnapshot.user_id == user_id)
     if year:
         bal_q = bal_q.where(BalanceSnapshot.year == year)
     if month:

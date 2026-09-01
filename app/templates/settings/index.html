@@ -90,22 +90,148 @@
   {% endif %}
 </div>
 
+{# ==================== 数据导出 ==================== #}
+<div class="card" style="margin-top:1rem;">
+  <div class="section-title" style="margin-top:0;">
+    <span class="badge tag-income">数据导出</span>
+    <small class="muted" style="margin-left:.5rem;">导出当前用户的数据 (JSON / Excel)</small>
+  </div>
+  <div class="action-row">
+    <a class="btn btn-sm" href="{{ url_for('settings.export_excel') }}">导出 Excel (全部)</a>
+    <a class="btn btn-sm btn-secondary" href="{{ url_for('settings.export_json') }}">导出 JSON (全部)</a>
+  </div>
+</div>
+
+{# ==================== 菜单管理 (Sheet 增减 / 改名) ==================== #}
+<div class="card" style="margin-top:1rem;">
+  <div class="section-title" style="margin-top:0;">
+    <span class="badge tag-balance">菜单管理</span>
+    <small class="muted" style="margin-left:.5rem;">左侧菜单树增减 / 改名 (结构公用, 所有用户共享)</small>
+  </div>
+
+  {# 新增菜单 #}
+  <form method="post" action="{{ url_for('settings.sheet_add') }}" class="form-row" style="margin-bottom:1rem;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="text" name="sheet_name" placeholder="菜单名称" required style="min-width:200px;">
+    <select name="sheet_kind" style="width:120px;">
+      <option value="entries">账单</option>
+      <option value="balances">结余</option>
+      <option value="other">其他</option>
+    </select>
+    <button type="submit" class="btn btn-sm">新增菜单</button>
+  </form>
+
+  {# 已有菜单列表 #}
+  {% if sheets %}
+  <table>
+    <thead>
+      <tr><th>名称</th><th>类型</th><th>状态</th><th>排序</th><th>操作</th></tr>
+    </thead>
+    <tbody>
+      {% for s in sheets %}
+      <tr>
+        <td>
+          <form method="post" action="{{ url_for('settings.sheet_edit', sheet_id=s.id) }}" style="display:inline-flex;gap:.25rem;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="text" name="sheet_name" value="{{ s.name }}" style="min-width:180px;">
+            <select name="sheet_kind" style="width:100px;">
+              <option value="entries" {% if s.kind == 'entries' %}selected{% endif %}>账单</option>
+              <option value="balances" {% if s.kind == 'balances' %}selected{% endif %}>结余</option>
+              <option value="other" {% if s.kind == 'other' %}selected{% endif %}>其他</option>
+            </select>
+            <button type="submit" class="btn btn-sm">保存</button>
+          </form>
+        </td>
+        <td>
+          {% if s.kind == 'balances' %}
+            <span class="badge tag-balance">结余</span>
+          {% elif s.kind == 'entries' %}
+            <span class="badge tag-income">账单</span>
+          {% else %}
+            <span class="badge">{{ s.kind }}</span>
+          {% endif %}
+        </td>
+        <td>{{ '显示' if s.is_active else '隐藏' }}</td>
+        <td class="num">{{ s.sort_order }}</td>
+        <td>
+          {% if s.is_active %}
+          <form method="post" action="{{ url_for('settings.sheet_delete', sheet_id=s.id) }}" style="display:inline;"
+                onsubmit="return confirm('隐藏菜单 {{ s.name }}?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-delete" title="隐藏">隐藏</button>
+          </form>
+          {% else %}
+          <form method="post" action="{{ url_for('settings.sheet_restore', sheet_id=s.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-secondary" title="恢复">恢复</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><p>暂无菜单, 可在上方添加或从 Excel 初始化</p></div>
+  {% endif %}
+</div>
+
+{# ==================== 账户管理 ==================== #}
+<div class="card" style="margin-top:1rem;">
+  <div class="section-title" style="margin-top:0;">
+    <span class="badge tag-expense">账户管理</span>
+    <small class="muted" style="margin-left:.5rem;">结余类账户 (结构公用, 所有用户共享)</small>
+  </div>
+  <div class="action-row" style="margin-bottom:.5rem;">
+    <a class="btn btn-sm" href="{{ url_for('items.account_new') }}">新增账户</a>
+  </div>
+  {% if accounts %}
+  <table>
+    <thead>
+      <tr><th>名称</th><th>类型</th><th>归属</th><th>大类</th><th>状态</th><th>操作</th></tr>
+    </thead>
+    <tbody>
+      {% for a in accounts %}
+      <tr>
+        <td>{{ a.name }}</td>
+        <td><span class="badge tag-balance">{{ a.type }}</span></td>
+        <td>{{ a.owner }}</td>
+        <td>{{ a.group or '—' }}</td>
+        <td>{{ '启用' if a.is_active else '禁用' }}</td>
+        <td>
+          <a class="btn btn-sm" href="{{ url_for('items.account_edit', acc_id=a.id) }}">编辑</a>
+          <form method="post" action="{{ url_for('items.account_delete', acc_id=a.id) }}" style="display:inline;"
+                onsubmit="return confirm('删除账户 {{ a.name }}?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-delete" title="删除">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><p>暂无账户, 可在上方新增或从 Excel 初始化</p></div>
+  {% endif %}
+</div>
+
 {# ==================== 用户标识设置 ==================== #}
 <div class="card">
   <div class="section-title" style="margin-top:0;">
-    <span class="badge">用户标识</span>
+    <span class="badge">用户标识 · 数据隔离</span>
+    <small class="muted" style="margin-left:.5rem;">用户名即为数据归属 ID, 切换用户名即切换数据</small>
   </div>
   <div class="form-row">
-    <label>当前用户ID:</label>
-    <code class="setting-code">{{ my_user_id }}</code>
+    <label>当前用户:</label>
+    <code class="setting-code">{{ my_user_id or '未设置' }}</code>
   </div>
   <form method="post" action="{{ url_for('settings.update_profile') }}" class="form-row">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>我的昵称:</label>
+    <label>切换用户名:</label>
     <input type="text" name="user_label" value="{{ my_user_label }}"
-           placeholder="输入昵称 (编辑锁状态会显示谁在编辑)" required
+           placeholder="输入用户名 (如: 李 / 朱 / 君军)" required
            style="min-width:220px;">
-    <button type="submit" class="btn btn-sm">保存昵称</button>
+    <button type="submit" class="btn btn-sm">切换</button>
   </form>
 </div>
 

@@ -99,10 +99,10 @@ class Item(db.Model):
 
 
 class Entry(db.Model):
-    """月度条目记录 - (year, month, item_id) 唯一, 用于去重"""
+    """月度条目记录 - (year, month, item_id, user_id) 唯一, 用于去重"""
     __tablename__ = "entry"
     __table_args__ = (
-        UniqueConstraint("year", "month", "item_id", name="uq_entry_month_item"),
+        UniqueConstraint("year", "month", "item_id", "user_id", name="uq_entry_month_item_user"),
         Index("ix_entry_period", "year", "month"),
     )
 
@@ -112,6 +112,7 @@ class Entry(db.Model):
     item_id = db.Column(
         Integer, ForeignKey("item.id", ondelete="CASCADE"), nullable=False
     )
+    user_id = db.Column(String(64), default="", index=True)
     value = db.Column(Numeric(14, 2), default=0)
     note = db.Column(Text, default="")
     source = db.Column(String(32), default="manual")  # manual / excel / import
@@ -154,11 +155,11 @@ class Account(db.Model):
 
 
 class BalanceSnapshot(db.Model):
-    """月度账户结余快照 - (year, month, account_id) 唯一"""
+    """月度账户结余快照 - (year, month, account_id, user_id) 唯一"""
     __tablename__ = "balance_snapshot"
     __table_args__ = (
         UniqueConstraint(
-            "year", "month", "account_id", name="uq_snapshot_month_account"
+            "year", "month", "account_id", "user_id", name="uq_snapshot_month_account_user"
         ),
         Index("ix_snapshot_period", "year", "month"),
     )
@@ -169,6 +170,7 @@ class BalanceSnapshot(db.Model):
     account_id = db.Column(
         Integer, ForeignKey("account.id", ondelete="CASCADE"), nullable=False
     )
+    user_id = db.Column(String(64), default="", index=True)
     value = db.Column(Numeric(14, 2), default=0)
     note = db.Column(String(255), default="")
     source = db.Column(String(32), default="manual")

@@ -1,11 +1,13 @@
 """系统后台配置视图 - 独立配置页面
 
 功能模块:
-  1. 用户标识设置 (昵称)
-  2. 并发锁配置 (TTL / 开关 / 心跳间隔)
-  3. 活跃锁管理 (查看 / 强制释放)
-  4. 系统信息 (数据库 / 表行数 / 运行环境)
-  5. 数据导入与结构初始化
+  1. 用户标识设置 (昵称 = 用户ID, 数据隔离)
+  2. 菜单管理 (Sheet 增减 / 改名)
+  3. 账户管理 (查看 / 编辑)
+  4. 数据导入与导出
+  5. 并发锁配置 (TTL / 开关 / 心跳间隔)
+  6. 活跃锁管理 (查看 / 强制释放)
+  7. 系统信息 (数据库 / 表行数 / 运行环境)
 """
 import os
 import platform
@@ -19,7 +21,10 @@ from sqlalchemy import select, func
 from werkzeug.utils import secure_filename
 
 from .. import db
-from ..models import Item, Entry, Account, BalanceSnapshot, ImportLog, EditLock
+from ..models import (
+    Item, Entry, Account, BalanceSnapshot, ImportLog, EditLock,
+    Sheet, SheetColumn,
+)
 from ..services.locking import (
     get_setting, set_setting, get_lock_ttl, is_lock_enabled,
     list_all_locks, force_release, force_release_all, cleanup_expired,
@@ -80,19 +85,29 @@ def index():
         select(ImportLog).order_by(ImportLog.imported_at.desc()).limit(10)
     ).scalars().all()
 
+    # ---- 菜单管理: 所有 Sheet ----
+    sheets = db.session.execute(
+        select(Sheet).order_by(Sheet.sort_order, Sheet.id)
+    ).scalars().all()
+
+    # ---- 账户管理: 所有账户 ----
+    accounts = db.session.execute(
+        select(Account).order_by(Account.sort_order, Account.id)
+    ).scalars().all()
+
     return render_template(
         "settings/index.html",
         stats=stats, sys_info=sys_info, lock_config=lock_config,
         active_locks=active_locks, all_settings=all_settings,
         my_user_id=g.user_id, my_user_label=session.get("user_label", ""),
-        logs=logs,
+        logs=logs, sheets=sheets, accounts=accounts,
     )
 
 
 # -------------------------------------------------------------- 用户名设置 (首次弹窗)
 @bp.route("/username", methods=["POST"])
 def set_username():
-    """首次进入设置用户名 (弹窗表单)"""
+    """首次进入设置用户名 (弹窗表单) — 用户名即为 user_id, 数据按此隔离"""
     label = request.form.get("user_label", "").strip()
     if not label:
         flash("用户名不能为空", "error")
@@ -100,7 +115,9 @@ def set_username():
     if len(label) > 32:
         flash("用户名过长 (最多 32 字符)", "error")
         return redirect(request.referrer or url_for("dashboard.index"))
+    session["user_id"] = label
     session["user_label"] = label
+    g.user_id = label
     g.user_label = label
     flash(f"欢迎, {label}!", "success")
     return redirect(request.referrer or url_for("dashboard.index"))
@@ -109,17 +126,19 @@ def set_username():
 # -------------------------------------------------------------- 用户昵称
 @bp.route("/profile", methods=["POST"])
 def update_profile():
-    """设置当前用户昵称 (存 session)"""
+    """修改当前用户名 (user_id 同步变更, 实现用户切换)"""
     label = request.form.get("user_label", "").strip()
     if not label:
-        flash("昵称不能为空", "error")
+        flash("用户名不能为空", "error")
         return redirect(url_for("settings.index"))
     if len(label) > 32:
-        flash("昵称过长 (最多 32 字符)", "error")
+        flash("用户名过长 (最多 32 字符)", "error")
         return redirect(url_for("settings.index"))
+    session["user_id"] = label
     session["user_label"] = label
+    g.user_id = label
     g.user_label = label
-    flash(f"已设置昵称为: {label}", "success")
+    flash(f"已切换到用户: {label}", "success")
     return redirect(url_for("settings.index"))
 
 
@@ -138,7 +157,7 @@ def import_excel():
     f.save(fpath)
     strategy = request.form.get("strategy", "skip")
     from ..services.importer import import_excel as _do_import
-    result = _do_import(fpath, strategy=strategy)
+    result = _do_import(fpath, strategy=strategy, user_id=g.user_id)
     flash(
         f"导入完成: {result.get('imported', 0)} 条导入, "
         f"{result.get('skipped', 0)} 条跳过, "
@@ -157,7 +176,7 @@ def import_sample():
         flash("示例 Excel 文件不存在", "error")
         return redirect(url_for("settings.index"))
     from ..services.importer import import_excel as _do_import
-    result = _do_import(str(sample), strategy=strategy)
+    result = _do_import(str(sample), strategy=strategy, user_id=g.user_id)
     flash(
         f"示例数据导入完成: {result.get('imported', 0)} 条导入, "
         f"{result.get('skipped', 0)} 条跳过",
@@ -258,3 +277,118 @@ def cleanup_expired_locks():
     count = cleanup_expired()
     flash(f"已清理 {count} 个过期锁", "success")
     return redirect(url_for("settings.index"))
+
+
+# -------------------------------------------------------------- 菜单管理 (Sheet CRUD)
+@bp.route("/sheets/add", methods=["POST"])
+def sheet_add():
+    """新增工作表 (左侧菜单项)"""
+    name = request.form.get("sheet_name", "").strip()
+    kind = request.form.get("sheet_kind", "entries")
+    if not name:
+        flash("菜单名称不能为空", "error")
+        return redirect(url_for("settings.index"))
+    existing = db.session.execute(
+        select(Sheet).where(Sheet.name == name)
+    ).scalars().first()
+    if existing:
+        flash(f"菜单 '{name}' 已存在", "error")
+        return redirect(url_for("settings.index"))
+    max_order = db.session.query(func.max(Sheet.sort_order)).scalar() or 0
+    db.session.add(Sheet(
+        name=name, kind=kind, sort_order=max_order + 1,
+        is_active=True, source_file="manual",
+    ))
+    db.session.commit()
+    flash(f"已添加菜单: {name} ({kind})", "success")
+    return redirect(url_for("settings.index"))
+
+
+@bp.route("/sheets/<int:sheet_id>/edit", methods=["POST"])
+def sheet_edit(sheet_id: int):
+    """重命名工作表 / 修改类型"""
+    sheet = db.session.get(Sheet, sheet_id)
+    if not sheet:
+        flash("菜单不存在", "error")
+        return redirect(url_for("settings.index"))
+    new_name = request.form.get("sheet_name", "").strip()
+    new_kind = request.form.get("sheet_kind", sheet.kind)
+    if not new_name:
+        flash("菜单名称不能为空", "error")
+        return redirect(url_for("settings.index"))
+    if new_name != sheet.name:
+        dup = db.session.execute(
+            select(Sheet).where(Sheet.name == new_name)
+        ).scalars().first()
+        if dup:
+            flash(f"菜单名 '{new_name}' 已被占用", "error")
+            return redirect(url_for("settings.index"))
+        old_name = sheet.name
+        sheet.name = new_name
+        db.session.query(Item).filter(Item.sheet == old_name).update({"sheet": new_name})
+        db.session.query(Account).filter(Account.sheet == old_name).update({"sheet": new_name})
+        db.session.query(SheetColumn).filter(SheetColumn.sheet_name == old_name).update({"sheet_name": new_name})
+    sheet.kind = new_kind
+    db.session.commit()
+    flash(f"已更新菜单: {new_name}", "success")
+    return redirect(url_for("settings.index"))
+
+
+@bp.route("/sheets/<int:sheet_id>/delete", methods=["POST"])
+def sheet_delete(sheet_id: int):
+    """删除 (停用) 工作表"""
+    sheet = db.session.get(Sheet, sheet_id)
+    if not sheet:
+        flash("菜单不存在", "error")
+        return redirect(url_for("settings.index"))
+    name = sheet.name
+    sheet.is_active = False
+    db.session.commit()
+    flash(f"已隐藏菜单: {name}", "success")
+    return redirect(url_for("settings.index"))
+
+
+@bp.route("/sheets/<int:sheet_id>/restore", methods=["POST"])
+def sheet_restore(sheet_id: int):
+    """恢复已隐藏的工作表"""
+    sheet = db.session.get(Sheet, sheet_id)
+    if not sheet:
+        flash("菜单不存在", "error")
+        return redirect(url_for("settings.index"))
+    sheet.is_active = True
+    db.session.commit()
+    flash(f"已恢复菜单: {sheet.name}", "success")
+    return redirect(url_for("settings.index"))
+
+
+# -------------------------------------------------------------- 数据导出
+@bp.route("/export/json")
+def export_json():
+    """导出当前用户数据为 JSON"""
+    from io import BytesIO
+    from ..services.exporter import export_json as _do_export
+    year = request.args.get("year", type=int)
+    month = request.args.get("month", type=int)
+    data = _do_export(year=year, month=month, user_id=g.user_id)
+    name = f"budget_{year or 'all'}-{month or 'all'}.json"
+    from flask import send_file
+    return send_file(
+        BytesIO(data), mimetype="application/json",
+        as_attachment=True, download_name=name,
+    )
+
+
+@bp.route("/export/excel")
+def export_excel():
+    """导出当前用户数据为 Excel"""
+    from ..services.exporter import export_excel as _do_export
+    from flask import send_file
+    year = request.args.get("year", type=int)
+    month = request.args.get("month", type=int)
+    buf = _do_export(year=year, month=month, user_id=g.user_id)
+    name = f"budget_{year or 'all'}-{month or 'all'}.xlsx"
+    return send_file(
+        buf, mimetype="application/vnd.openxmlformats-officedocument."
+        "spreadsheetml.sheet",
+        as_attachment=True, download_name=name,
+    )

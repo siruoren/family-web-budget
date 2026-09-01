@@ -9,7 +9,6 @@ from sqlalchemy.orm import aliased
 
 from .. import db
 from ..models import Entry, Item, Account, BalanceSnapshot
-from ..services.analysis import monthly_summary
 from ..services.locking import (
     acquire_lock, release_lock, heartbeat_lock, list_locks,
     get_lock_ttl, is_lock_enabled,
@@ -32,7 +31,8 @@ def _get_period() -> tuple[int, int]:
 def index():
     """月度条目列表 - 已填 / 未填高亮"""
     year, month = _get_period()
-    summary = monthly_summary(year, month)
+    from ..services.analysis import monthly_summary
+    summary = monthly_summary(year, month, user_id=g.user_id)
 
     # 所有启用条目 (用于检查未填写)
     all_items = db.session.execute(
@@ -72,7 +72,10 @@ def edit():
         )
     ).scalars().all()
     entries = db.session.execute(
-        select(Entry).where(Entry.year == year, Entry.month == month)
+        select(Entry).where(
+            Entry.year == year, Entry.month == month,
+            Entry.user_id == g.user_id,
+        )
     ).scalars().all()
     entry_map = {e.item_id: e for e in entries}
     # 当前周期内所有活跃锁 (供模板标记他人锁定的条目)
@@ -97,7 +100,10 @@ def _save_entries(year: int, month: int):
     user_id = g.user_id
     # 批量预加载: 当前周期已有条目 + 活跃锁 (避免 N+1 查询)
     existing_entries = db.session.execute(
-        select(Entry).where(Entry.year == year, Entry.month == month)
+        select(Entry).where(
+            Entry.year == year, Entry.month == month,
+            Entry.user_id == user_id,
+        )
     ).scalars().all()
     entry_map = {e.item_id: e for e in existing_entries}
     all_locks = list_locks("entry", year, month)
@@ -129,7 +135,7 @@ def _save_entries(year: int, month: int):
         else:
             db.session.add(Entry(
                 year=year, month=month, item_id=it.id,
-                value=val, note=note, source="manual",
+                value=val, note=note, source="manual", user_id=user_id,
             ))
         saved += 1
     db.session.commit()
@@ -157,6 +163,7 @@ def quick_save():
         select(Entry).where(
             Entry.year == year, Entry.month == month,
             Entry.item_id == item_id,
+            Entry.user_id == g.user_id,
         )
     ).scalars().first()
     if existing:
@@ -172,6 +179,7 @@ def quick_save():
         db.session.add(Entry(
             year=year, month=month, item_id=item_id,
             value=float(value), note=note, source="manual",
+            user_id=g.user_id,
         ))
     db.session.commit()
     return jsonify({"ok": True, "action": "saved"})
@@ -188,7 +196,8 @@ def balances():
     ).scalars().all()
     snapshots = db.session.execute(
         select(BalanceSnapshot).where(
-            BalanceSnapshot.year == year, BalanceSnapshot.month == month
+            BalanceSnapshot.year == year, BalanceSnapshot.month == month,
+            BalanceSnapshot.user_id == g.user_id,
         )
     ).scalars().all()
     snap_map = {s.account_id: s for s in snapshots}
@@ -212,7 +221,8 @@ def balances_save():
     # 批量预加载: 当前周期已有快照 + 活跃锁 (避免 N+1 查询)
     existing_snaps = db.session.execute(
         select(BalanceSnapshot).where(
-            BalanceSnapshot.year == year, BalanceSnapshot.month == month
+            BalanceSnapshot.year == year, BalanceSnapshot.month == month,
+            BalanceSnapshot.user_id == user_id,
         )
     ).scalars().all()
     snap_map = {s.account_id: s for s in existing_snaps}
@@ -245,7 +255,7 @@ def balances_save():
         else:
             db.session.add(BalanceSnapshot(
                 year=year, month=month, account_id=a.id,
-                value=val, note=note, source="manual",
+                value=val, note=note, source="manual", user_id=user_id,
             ))
         saved += 1
     db.session.commit()

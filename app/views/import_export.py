@@ -5,7 +5,7 @@ from datetime import datetime
 from io import BytesIO
 from flask import (
     Blueprint, render_template, request, redirect, url_for, flash,
-    jsonify, send_file, current_app,
+    jsonify, send_file, current_app, g,
 )
 from werkzeug.utils import secure_filename
 from sqlalchemy import select
@@ -47,7 +47,7 @@ def import_excel_view():
     save_path = os.path.join(current_app.config["UPLOAD_FOLDER"], fname)
     f.save(save_path)
     try:
-        summary = import_excel(save_path, strategy=strategy)
+        summary = import_excel(save_path, strategy=strategy, user_id=g.user_id)
         flash(
             f"导入完成: 新增 {summary['total_imported']} 条, "
             f"去重跳过 {summary['total_skipped']} 条, "
@@ -68,7 +68,7 @@ def import_sample():
         flash("示例 Excel 不存在: " + str(sample), "error")
         return redirect(url_for("import_export.index"))
     try:
-        summary = import_excel(str(sample), strategy=strategy)
+        summary = import_excel(str(sample), strategy=strategy, user_id=g.user_id)
         flash(
             f"示例数据导入完成: 新增 {summary['total_imported']} 条, "
             f"去重 {summary['total_skipped']} 条",
@@ -120,7 +120,7 @@ def init_structure():
 def export_json_view():
     year = request.args.get("year", type=int)
     month = request.args.get("month", type=int)
-    data = export_json(year=year, month=month)
+    data = export_json(year=year, month=month, user_id=g.user_id)
     name = f"budget_{year or 'all'}-{month or 'all'}.json"
     return send_file(
         io_bytes(data), mimetype="application/json",
@@ -132,7 +132,7 @@ def export_json_view():
 def export_excel_view():
     year = request.args.get("year", type=int)
     month = request.args.get("month", type=int)
-    buf = export_excel(year=year, month=month)
+    buf = export_excel(year=year, month=month, user_id=g.user_id)
     name = f"budget_{year or 'all'}-{month or 'all'}.xlsx"
     return send_file(
         buf, mimetype="application/vnd.openxmlformats-officedocument."

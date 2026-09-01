@@ -114,7 +114,7 @@ def _group_balances(balances: list[ParsedBalance]) -> dict[tuple, ParsedBalance]
 
 # -------------------------------------------------------------- SQLite 批量 upsert
 def _upsert_entries(grouped: dict[tuple, ParsedEntry], item_cache: _ItemCache,
-                    strategy: str = "skip") -> tuple[int, int, int]:
+                    strategy: str = "skip", user_id: str = "") -> tuple[int, int, int]:
     """返回 (imported, skipped, error)"""
     imported = skipped = error = 0
     for (year, month, item_key), pe in grouped.items():
@@ -124,6 +124,7 @@ def _upsert_entries(grouped: dict[tuple, ParsedEntry], item_cache: _ItemCache,
                 select(Entry).where(
                     Entry.year == year, Entry.month == month,
                     Entry.item_id == item.id,
+                    Entry.user_id == user_id,
                 )
             ).scalars().first()
 
@@ -139,6 +140,7 @@ def _upsert_entries(grouped: dict[tuple, ParsedEntry], item_cache: _ItemCache,
                 db.session.add(Entry(
                     year=year, month=month, item_id=item.id,
                     value=pe.value, note=pe.note, source="excel",
+                    user_id=user_id,
                 ))
                 imported += 1
         except Exception:  # noqa: BLE001
@@ -150,7 +152,7 @@ def _upsert_entries(grouped: dict[tuple, ParsedEntry], item_cache: _ItemCache,
 
 def _upsert_balances(grouped: dict[tuple, ParsedBalance],
                      acc_cache: _AccountCache,
-                     strategy: str = "skip") -> tuple[int, int, int]:
+                     strategy: str = "skip", user_id: str = "") -> tuple[int, int, int]:
     imported = skipped = error = 0
     for (year, month, acc_key), pb in grouped.items():
         try:
@@ -161,6 +163,7 @@ def _upsert_balances(grouped: dict[tuple, ParsedBalance],
                 select(BalanceSnapshot).where(
                     BalanceSnapshot.year == year, BalanceSnapshot.month == month,
                     BalanceSnapshot.account_id == acc.id,
+                    BalanceSnapshot.user_id == user_id,
                 )
             ).scalars().first()
             if existing:
@@ -175,6 +178,7 @@ def _upsert_balances(grouped: dict[tuple, ParsedBalance],
                 db.session.add(BalanceSnapshot(
                     year=year, month=month, account_id=acc.id,
                     value=pb.value, note=pb.note, source="excel",
+                    user_id=user_id,
                 ))
                 imported += 1
         except Exception:  # noqa: BLE001
@@ -185,8 +189,8 @@ def _upsert_balances(grouped: dict[tuple, ParsedBalance],
 
 
 # -------------------------------------------------------------- 主入口
-def import_excel(path: str, strategy: str = "skip") -> dict:
-    """导入 Excel 文件 -> 返回汇总统计"""
+def import_excel(path: str, strategy: str = "skip", user_id: str = "") -> dict:
+    """导入 Excel 文件 -> 返回汇总统计 (按 user_id 隔离)"""
     results = parse_workbook(path)
     summary = {
         "total_imported": 0, "total_skipped": 0, "total_error": 0,
@@ -199,10 +203,10 @@ def import_excel(path: str, strategy: str = "skip") -> dict:
     for r in results:
         if r.kind == "entries" and r.entries:
             grouped = _group_entries(r.entries)
-            imp, skip, err = _upsert_entries(grouped, item_cache, strategy)
+            imp, skip, err = _upsert_entries(grouped, item_cache, strategy, user_id=user_id)
         elif r.kind == "balances" and r.balances:
             grouped = _group_balances(r.balances)
-            imp, skip, err = _upsert_balances(grouped, acc_cache, strategy)
+            imp, skip, err = _upsert_balances(grouped, acc_cache, strategy, user_id=user_id)
         else:
             imp, skip, err = 0, 0, 0
 

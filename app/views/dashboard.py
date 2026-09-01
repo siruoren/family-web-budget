@@ -1,5 +1,5 @@
 """Dashboard 视图 - 首页"""
-from flask import Blueprint, render_template, request, jsonify, session
+from flask import Blueprint, render_template, request, jsonify, session, g
 from sqlalchemy import select
 
 from .. import db
@@ -14,14 +14,14 @@ bp = Blueprint("dashboard", __name__)
 @bp.route("/")
 def index():
     """首页 Dashboard - 概览 + 趋势图 + Top 项目"""
-    overview = dashboard_overview()
+    overview = dashboard_overview(user_id=g.user_id)
     return render_template("dashboard/index.html", **overview)
 
 
 @bp.route("/api/dashboard")
 def api_dashboard():
     """Dashboard 数据 API (供前端 fetch 重绘图表)"""
-    return jsonify(dashboard_overview())
+    return jsonify(dashboard_overview(user_id=g.user_id))
 
 
 @bp.route("/api/series")
@@ -39,4 +39,4 @@ def api_series():
     if m_from < 1:
         m_from += 12
         y_from -= 1
-    return jsonify({"series": period_series(y_from, m_from, y_to, m_to)})
+    return jsonify({"series": period_series(y_from, m_from, y_to, m_to, user_id=g.user_id)})

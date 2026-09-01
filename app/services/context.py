@@ -1,5 +1,4 @@
 """模板上下文注入 - 月份选择器 / 当前周期 / 统计概览 / 并发锁用户标识 / 侧边栏"""
-import uuid
 from datetime import datetime
 from flask import g, session, url_for
 from sqlalchemy import select
@@ -9,15 +8,15 @@ from ..models import Sheet, Account, SheetColumn
 
 
 def ensure_user():
-    """确保每个会话拥有唯一 user_id (用于并发锁标识)
+    """确保每个会话拥有 user_id (等于用户输入的用户名)
 
-    首次访问时生成, 并持久化在 session 中.
-    user_label 可由用户在 /me/label 设置, 默认用 user_id 前 6 位.
+    首次访问时 user_id 为空, 触发前端弹窗要求输入用户名.
+    用户输入后, user_id = user_label = 用户名, 数据按 user_id 隔离.
     """
     if "user_id" not in session:
-        session["user_id"] = "u_" + uuid.uuid4().hex[:8]
-    if "user_label" not in session or not session["user_label"]:
-        session["user_label"] = "用户" + session["user_id"][-4:]
+        session["user_id"] = ""
+    if "user_label" not in session:
+        session["user_label"] = ""
     g.user_id = session["user_id"]
     g.user_label = session["user_label"]
 
@@ -83,7 +82,7 @@ def _build_sidebar_tree() -> list:
                     gorder.append(gname)
                 gmap[gname].append({
                     "name": a.name,
-                    "url": url_for("items.account_edit", acc_id=a.id),
+                    "url": url_for("sheets.detail", name=s.name),
                     "sub": f"{a.owner} · {a.type}",
                 })
             for gname in gorder:

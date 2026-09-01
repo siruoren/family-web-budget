@@ -1,6 +1,6 @@
 """分析视图 - 项目趋势 / 历史项目建议 / 未来资产预测"""
 from datetime import datetime
-from flask import Blueprint, render_template, request, jsonify
+from flask import Blueprint, render_template, request, jsonify, g
 
 from ..services.analysis import (
     item_trend, all_item_trends, forecast_assets, period_series,
@@ -24,20 +24,20 @@ def index():
 def api_trends():
     year_from = request.args.get("year_from", type=int)
     year_to = request.args.get("year_to", type=int)
-    return jsonify({"trends": all_item_trends(year_from, year_to)})
+    return jsonify({"trends": all_item_trends(year_from, year_to, user_id=g.user_id)})
 
 
 @bp.route("/api/analysis/item/<int:item_id>")
 def api_item_trend(item_id: int):
     year_from = request.args.get("year_from", type=int)
     year_to = request.args.get("year_to", type=int)
-    return jsonify(item_trend(item_id, year_from, year_to))
+    return jsonify(item_trend(item_id, year_from, year_to, user_id=g.user_id))
 
 
 @bp.route("/api/analysis/forecast")
 def api_forecast():
     months = request.args.get("months", 12, type=int)
-    return jsonify(forecast_assets(future_months=months))
+    return jsonify(forecast_assets(future_months=months, user_id=g.user_id))
 
 
 @bp.route("/api/analysis/series")
@@ -48,5 +48,5 @@ def api_series():
     y_from = request.args.get("year_from", now.year - 1, type=int)
     m_from = request.args.get("month_from", now.month, type=int)
     return jsonify({
-        "series": period_series(y_from, m_from, y_to, m_to),
+        "series": period_series(y_from, m_from, y_to, m_to, user_id=g.user_id),
     })
