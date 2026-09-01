@@ -34,6 +34,7 @@
     <div class="nav-links">
       <a href="{{ url_for('dashboard.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('dashboard') }}">首页</a>
       <a href="{{ url_for('entries.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('entries') }}">月度条目</a>
+      <a href="{{ url_for('realtimestats.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('realtimestats') }}">实时统计</a>
       <a href="{{ url_for('analysis.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('analysis') }}">智能分析</a>
       <a href="{{ url_for('settings.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('settings') }}">系统配置</a>
     </div>

@@ -44,6 +44,7 @@ def create_app(config_name: str = "default") -> Flask:
     from .views.admin import bp as admin_bp
     from .views.settings import bp as settings_bp
     from .views.sheets import bp as sheets_bp
+    from .views.realtimestats import bp as realtimestats_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(entries_bp)
@@ -53,6 +54,7 @@ def create_app(config_name: str = "default") -> Flask:
     app.register_blueprint(admin_bp)
     app.register_blueprint(settings_bp)
     app.register_blueprint(sheets_bp)
+    app.register_blueprint(realtimestats_bp)
 
     # 上下文: 注入月份选择器等通用变量
     from .services.context import inject_globals, ensure_user
