@@ -30,7 +30,14 @@ def _get_token() -> str:
 
 
 def _check_csrf() -> None:
-    """before_request 钩子: 校验 POST/PUT/DELETE/PATCH 的 CSRF token"""
+    """before_request 钩子: 校验 POST/PUT/DELETE/PATCH 的 CSRF token
+
+    对所有请求预先确保 session 中存在 token (GET 请求也生成),
+    保证表单渲染时 context_processor 取到的是同一个 token.
+    """
+    # 先确保 session 中有 token (对所有 method 生效)
+    token = _get_token()
+
     if request.method in SAFE_METHODS:
         return
 
@@ -39,7 +46,6 @@ def _check_csrf() -> None:
         if path.startswith(prefix):
             return
 
-    token = _get_token()
     # 表单字段 / JSON body / 自定义 header 任一匹配即可
     submitted = (
         request.form.get("csrf_token")

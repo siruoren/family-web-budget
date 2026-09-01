@@ -3,7 +3,6 @@
 配置优先级: 环境变量 > config.yml > 默认值
 """
 import os
-import secrets
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -63,7 +62,7 @@ class Config:
 
     SECRET_KEY = os.environ.get("SECRET_KEY") or \
         _yaml.get("security", {}).get("secret_key") or \
-        secrets.token_hex(32)
+        "dev-secret-key-change-in-production"
 
     MAX_CONTENT_LENGTH = int(os.environ.get("MAX_CONTENT_LENGTH") or
                              _yaml.get("upload", {}).get("max_content_length", 50 * 1024 * 1024))
