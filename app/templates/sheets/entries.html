@@ -43,7 +43,7 @@
         <tr><th>条目</th><th>归属</th><th class="num">金额 (元)</th><th>备注</th></tr>
       </thead>
       <tbody>
-        {% for it, v in groups[gname] %}
+        {% for it, v, note in groups[gname] %}
         <tr>
           <td>{{ it.name }}</td>
           <td>{{ it.owner }}</td>
@@ -54,7 +54,7 @@
           </td>
           <td>
             <input type="text" name="note_{{ it.id }}" placeholder="备注"
-                   style="width:160px;">
+                   value="{{ note }}" style="width:160px;">
           </td>
         </tr>
         {% else %}
@@ -124,7 +124,7 @@
       <tr><th>条目</th><th>归属</th><th class="num">金额</th></tr>
     </thead>
     <tbody>
-      {% for it, v in groups[gname] %}
+      {% for it, v, note in groups[gname] %}
       <tr>
         <td>{{ it.name }}</td>
         <td>{{ it.owner }}</td>
