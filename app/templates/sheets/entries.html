@@ -86,6 +86,28 @@
               class="btn btn-sm btn-secondary">添加字段</button>
     </div>
   </div>
+
+  {# 批量添加字段 #}
+  <div class="card" style="margin-top:1rem;border:2px dashed var(--border);">
+    <h3 class="section-title" style="margin-top:0;">批量添加字段</h3>
+    <div class="form-row" style="flex-wrap:wrap;gap:.5rem;">
+      <select name="field_type" style="width:120px;">
+        <option value="收入">收入</option>
+        <option value="支出" selected>支出</option>
+        <option value="结余">结余</option>
+      </select>
+      <input type="text" name="field_owner" placeholder="归属 (君/军/家庭)"
+             value="家庭" style="width:120px;">
+    </div>
+    <div style="margin-top:.5rem;">
+      <textarea name="fields_text" placeholder="每行一个字段名称&#10;例如：&#10;房租&#10;水费&#10;电费" 
+                rows="5" style="width:100%;resize:vertical;"></textarea>
+    </div>
+    <div style="margin-top:.5rem;">
+      <button type="submit" formaction="{{ url_for('sheets.batch_add_fields', name=sheet.name) }}"
+              class="btn btn-sm btn-secondary">批量添加</button>
+    </div>
+  </div>
 </form>
 
 {% else %}

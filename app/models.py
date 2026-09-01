@@ -21,25 +21,37 @@ from . import db
 
 
 class Sheet(db.Model):
-    """Excel 工作表登记表 - 驱动左侧大菜单 (每个 sheet 页作为一个大菜单)
+    """Excel 工作表登记表 - 驱动左侧多级菜单 (支持无限层级)
 
-    name      : Excel 工作表名 (唯一)
+    name      : Excel 工作表名 (同级唯一，与parent_id组合唯一)
     kind      : entries(年度账单) / balances(家庭结余) / other(其他)
-    sort_order: 工作表在 Excel 中的顺序
+    sort_order: 工作表在同级中的顺序
+    parent_id : 父菜单ID，NULL表示顶级菜单
+    level     : 层级深度 (0=顶级, 1=二级, ...)
     """
     __tablename__ = "sheet"
+    __table_args__ = (
+        UniqueConstraint("name", "parent_id", name="uq_sheet_name_parent"),
+        Index("ix_sheet_name", "name"),
+    )
 
     id = db.Column(Integer, primary_key=True)
-    name = db.Column(String(128), nullable=False, unique=True, index=True)
+    name = db.Column(String(128), nullable=False, index=True)
     kind = db.Column(String(16), default="other")
     sort_order = db.Column(Integer, default=0)
     is_active = db.Column(Boolean, default=True, index=True)
     source_file = db.Column(String(255), default="")
     note = db.Column(String(255), default="")
     imported_at = db.Column(DateTime, default=datetime.utcnow)
+    parent_id = db.Column(Integer, ForeignKey('sheet.id', ondelete='CASCADE'), nullable=True, index=True)
+    level = db.Column(Integer, default=0, index=True)
+
+    # 自引用关系，用于父子菜单管理
+    children = relationship("Sheet", backref=db.backref('parent', remote_side=[id]),
+                           cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<Sheet {self.kind}:{self.name}>"
+        return f"<Sheet {self.kind}:{self.name} (level:{self.level})>"
 
 
 class SheetColumn(db.Model):

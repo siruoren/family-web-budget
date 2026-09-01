@@ -14,8 +14,12 @@ bp = Blueprint("dashboard", __name__)
 @bp.route("/")
 def index():
     """首页 Dashboard - 概览 + 趋势图 + Top 项目"""
-    overview = dashboard_overview(user_id=g.user_id)
-    return render_template("dashboard/index.html", **overview)
+    from datetime import datetime
+    now = datetime.now()
+    year = request.args.get("year", type=int) or now.year
+    month = request.args.get("month", type=int) or now.month
+    overview = dashboard_overview(user_id=g.user_id, year=year, month=month)
+    return render_template("dashboard/index.html", year=year, month=month, **overview)
 
 
 @bp.route("/api/dashboard")

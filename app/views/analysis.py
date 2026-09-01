@@ -13,10 +13,13 @@ bp = Blueprint("analysis", __name__)
 def index():
     now = datetime.now()
     year_from = request.args.get("year_from", now.year - 2, type=int)
+    month_from = request.args.get("month_from", 1, type=int)
     year_to = request.args.get("year_to", now.year, type=int)
+    month_to = request.args.get("month_to", now.month, type=int)
     return render_template(
         "analysis/index.html",
-        year_from=year_from, year_to=year_to,
+        year_from=year_from, month_from=month_from,
+        year_to=year_to, month_to=month_to,
     )
 
 

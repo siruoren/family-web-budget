@@ -106,7 +106,7 @@
 <div class="card" style="margin-top:1rem;">
   <div class="section-title" style="margin-top:0;">
     <span class="badge tag-balance">菜单管理</span>
-    <small class="muted" style="margin-left:.5rem;">左侧菜单树增减 / 改名 (结构公用, 所有用户共享)</small>
+    <small class="muted" style="margin-left:.5rem;">左侧多级菜单树增减 / 改名 (结构公用, 所有用户共享)</small>
   </div>
 
   {# 新增菜单 #}
@@ -118,59 +118,61 @@
       <option value="balances">结余</option>
       <option value="other">其他</option>
     </select>
+    <select name="parent_id" style="width:120px;">
+      <option value="">顶级菜单</option>
+      {% for s in all_sheets %}
+      <option value="{{ s.id }}">{{ '  ' * s.level }}{{ s.name }}</option>
+      {% endfor %}
+    </select>
     <button type="submit" class="btn btn-sm">新增菜单</button>
   </form>
 
-  {# 已有菜单列表 #}
-  {% if sheets %}
-  <table>
-    <thead>
-      <tr><th>名称</th><th>类型</th><th>状态</th><th>排序</th><th>操作</th></tr>
-    </thead>
-    <tbody>
-      {% for s in sheets %}
-      <tr>
-        <td>
-          <form method="post" action="{{ url_for('settings.sheet_edit', sheet_id=s.id) }}" style="display:inline-flex;gap:.25rem;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="text" name="sheet_name" value="{{ s.name }}" style="min-width:180px;">
-            <select name="sheet_kind" style="width:100px;">
-              <option value="entries" {% if s.kind == 'entries' %}selected{% endif %}>账单</option>
-              <option value="balances" {% if s.kind == 'balances' %}selected{% endif %}>结余</option>
-              <option value="other" {% if s.kind == 'other' %}selected{% endif %}>其他</option>
-            </select>
-            <button type="submit" class="btn btn-sm">保存</button>
-          </form>
-        </td>
-        <td>
-          {% if s.kind == 'balances' %}
-            <span class="badge tag-balance">结余</span>
-          {% elif s.kind == 'entries' %}
-            <span class="badge tag-income">账单</span>
-          {% else %}
-            <span class="badge">{{ s.kind }}</span>
-          {% endif %}
-        </td>
-        <td>{{ '显示' if s.is_active else '隐藏' }}</td>
-        <td class="num">{{ s.sort_order }}</td>
-        <td>
-          {% if s.is_active %}
-          <form method="post" action="{{ url_for('settings.sheet_delete', sheet_id=s.id) }}" style="display:inline;"
-                onsubmit="return confirm('隐藏菜单 {{ s.name }}?')">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn-delete" title="隐藏">隐藏</button>
-          </form>
-          {% else %}
-          <form method="post" action="{{ url_for('settings.sheet_restore', sheet_id=s.id) }}" style="display:inline;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn btn-sm btn-secondary" title="恢复">恢复</button>
-          </form>
-          {% endif %}
-        </td>
-      </tr>
+  {# 菜单树显示 #}
+  {% if menu_tree %}
+  <div class="menu-tree">
+    {% macro render_menu_tree(nodes, level=0) %}
+      {% for node in nodes %}
+      <div class="menu-node" style="margin-left: {{ level * 20 }}px;">
+        <div class="menu-node-content">
+          <span class="menu-name">{{ node.name }}</span>
+          <span class="menu-badge badge {% if node.kind == 'balances' %}tag-balance{% elif node.kind == 'entries' %}tag-income{% endif %}">{{ node.kind }}</span>
+          <span class="menu-level">L{{ node.level }}</span>
+          <span class="menu-status">{{ '显示' if node.is_active else '隐藏' }}</span>
+          <div class="menu-actions">
+            <form method="post" action="{{ url_for('settings.sheet_edit', sheet_id=node.id) }}" style="display:inline-flex;gap:.25rem;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="sheet_name" value="{{ node.name }}" style="min-width:120px;">
+              <select name="sheet_kind" style="width:80px;">
+                <option value="entries" {% if node.kind == 'entries' %}selected{% endif %}>账单</option>
+                <option value="balances" {% if node.kind == 'balances' %}selected{% endif %}>结余</option>
+                <option value="other" {% if node.kind == 'other' %}selected{% endif %}>其他</option>
+              </select>
+              <select name="parent_id" style="width:100px;">
+                <option value="">顶级</option>
+                {% for s in all_sheets %}
+                {% if s.id != node.id %}  {# 排除自己 #}
+                <option value="{{ s.id }}" {% if node.parent_id == s.id %}selected{% endif %}>{{ '  ' * s.level }}{{ s.name }}</option>
+                {% endif %}
+                {% endfor %}
+              </select>
+              <button type="submit" class="btn btn-sm">保存</button>
+            </form>
+            <form method="post" action="{{ url_for('settings.sheet_delete', sheet_id=node.id) }}" style="display:inline;"
+                  onsubmit="return confirm('删除菜单 {{ node.name }} 及其所有子菜单?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn-delete" title="删除">删除</button>
+            </form>
+          </div>
+        </div>
+        {% if node.children %}
+          {{ render_menu_tree(node.children, level + 1) }}
+        {% endif %}
+      </div>
       {% endfor %}
-    </tbody>
-  </table>
+    {% endmacro %}
+    
+    {{ render_menu_tree(menu_tree) }}
+  </div>
   {% else %}
   <div class="empty-state"><p>暂无菜单, 可在上方添加或从 Excel 初始化</p></div>
   {% endif %}

@@ -66,7 +66,94 @@
               </span>
             </summary>
 
-            {% if node.groups %}
+            {% if node.children %}
+              {# 新的多层级子菜单 #}
+              <ul class="tree-sub">
+                {% for child in node.children %}
+                <li class="tree-group">
+                  <details class="tree-group-det">
+                    <summary class="tree-group-head">{{ child.name }}
+                      <span class="tree-badge {% if child.kind == 'balances' %}tag-balance{% elif child.kind == 'entries' %}tag-income{% endif %}">{{ child.kind }}</span>
+                      <span class="tree-count">({{ child.count }})</span>
+                    </summary>
+                    {# 递归显示更深层的子菜单 #}
+                    {% if child.children %}
+                      <ul class="tree-sub">
+                        {% for grandchild in child.children %}
+                        <li class="tree-group">
+                          <details class="tree-group-det">
+                            <summary class="tree-group-head">{{ grandchild.name }}
+                              <span class="tree-badge {% if grandchild.kind == 'balances' %}tag-balance{% elif grandchild.kind == 'entries' %}tag-income{% endif %}">{{ grandchild.kind }}</span>
+                              <span class="tree-count">({{ grandchild.count }})</span>
+                            </summary>
+                            {% if grandchild.groups %}
+                              <ul class="tree-leaves">
+                                {% for grp in grandchild.groups %}
+                                <li class="tree-group">
+                                  <details class="tree-group-det">
+                                    <summary class="tree-group-head">{{ grp.name }}
+                                      <span class="tree-count">({{ grp.count }})</span>
+                                    </summary>
+                                    <ul class="tree-leaves">
+                                      {% for leaf in grp.leaves %}
+                                      <li>
+                                        <a href="{{ leaf.url }}" class="tree-leaf"
+                                           title="{{ leaf.sub }}">
+                                          <span class="leaf-dot"></span>{{ leaf.name }}
+                                        </a>
+                                      </li>
+                                      {% endfor %}
+                                    </ul>
+                                  </details>
+                                </li>
+                                {% endfor %}
+                              </ul>
+                            {% else %}
+                              <ul class="tree-sub">
+                                <li class="tree-leaf-row">
+                                  <a class="tree-leaf" href="{{ grandchild.url }}">查看 ›</a>
+                                </li>
+                              </ul>
+                            {% endif %}
+                          </details>
+                        </li>
+                        {% endfor %}
+                      </ul>
+                    {% elif child.groups %}
+                      <ul class="tree-leaves">
+                        {% for grp in child.groups %}
+                        <li class="tree-group">
+                          <details class="tree-group-det">
+                            <summary class="tree-group-head">{{ grp.name }}
+                              <span class="tree-count">({{ grp.count }})</span>
+                            </summary>
+                            <ul class="tree-leaves">
+                              {% for leaf in grp.leaves %}
+                              <li>
+                                <a href="{{ leaf.url }}" class="tree-leaf"
+                                   title="{{ leaf.sub }}">
+                                  <span class="leaf-dot"></span>{{ leaf.name }}
+                                </a>
+                              </li>
+                              {% endfor %}
+                            </ul>
+                          </details>
+                        </li>
+                        {% endfor %}
+                      </ul>
+                    {% else %}
+                      <ul class="tree-sub">
+                        <li class="tree-leaf-row">
+                          <a class="tree-leaf" href="{{ child.url }}">查看 ›</a>
+                        </li>
+                      </ul>
+                    {% endif %}
+                  </details>
+                </li>
+                {% endfor %}
+              </ul>
+            {% elif node.groups %}
+              {# 原有的分组结构 #}
               <ul class="tree-sub">
                 {% for grp in node.groups %}
                 <li class="tree-group">

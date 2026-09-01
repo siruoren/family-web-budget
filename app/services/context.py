@@ -22,17 +22,21 @@ def ensure_user():
 
 
 def _build_sidebar_tree() -> list:
-    """构建左侧多级菜单: Sheet(大菜单) -> 大类 -> 小项(叶子)
+    """构建左侧多级菜单: 支持无限层级菜单结构
 
+    - 基于 Sheet 表的 parent_id 实现多层级
     - balances 类: 叶子=账户 (链接到账户编辑), 数据来自 Account.sheet/group
     - entries  类: 叶子=条目列名 (链接到 /sheet/<name> 跳转该年条目),
                   数据来自 SheetColumn (各年度表实际列名)
     - other    类: 叶子菜单 "查看 ›" -> /sheet/<name>
     """
     try:
+        # 获取所有激活的顶级菜单
         sheets = db.session.execute(
-            select(Sheet).where(Sheet.is_active == True)  # noqa: E712
-            .order_by(Sheet.sort_order, Sheet.id)
+            select(Sheet).where(
+                Sheet.is_active == True,  # noqa: E712
+                Sheet.parent_id.is_(None)
+            ).order_by(Sheet.sort_order, Sheet.id)
         ).scalars().all()
     except Exception:
         return []
@@ -64,49 +68,70 @@ def _build_sidebar_tree() -> list:
         for c in cols:
             cols_by_sheet.setdefault(c.sheet_name, []).append(c)
 
+    def build_sheet_node(sheet: Sheet) -> dict:
+        """递归构建菜单节点"""
+        node = {
+            "name": sheet.name, "kind": sheet.kind, "order": sheet.sort_order,
+            "groups": [], "count": 0,
+            "url": url_for("sheets.detail", name=sheet.name),
+            "children": [],  # 子菜单
+        }
+        
+        # 处理子菜单
+        children = db.session.execute(
+            select(Sheet).where(
+                Sheet.parent_id == sheet.id,
+                Sheet.is_active == True  # noqa: E712
+            ).order_by(Sheet.sort_order, Sheet.id)
+        ).scalars().all()
+        
+        for child in children:
+            node["children"].append(build_sheet_node(child))
+            node["count"] += 1
+        
+        # 如果没有子菜单，处理原有的分组逻辑
+        if not node["children"]:
+            if sheet.kind == "balances":
+                accs = accounts_by_sheet.get(sheet.name, [])
+                gmap: dict = {}
+                gorder: list = []
+                for a in accs:
+                    gname = a.group or a.type or "其他"
+                    if gname not in gmap:
+                        gmap[gname] = []
+                        gorder.append(gname)
+                    gmap[gname].append({
+                        "name": a.name,
+                        "url": url_for("sheets.detail", name=sheet.name),
+                        "sub": f"{a.owner} · {a.type}",
+                    })
+                for gname in gorder:
+                    node["groups"].append({"name": gname, "count": len(gmap[gname]),
+                                           "leaves": gmap[gname]})
+                node["count"] = len(accs)
+            elif sheet.kind == "entries":
+                cols = cols_by_sheet.get(sheet.name, [])
+                gmap: dict = {}
+                gorder: list = []
+                for c in cols:
+                    if c.group not in gmap:
+                        gmap[c.group] = []
+                        gorder.append(c.group)
+                    gmap[c.group].append({
+                        "name": c.name,
+                        "url": url_for("sheets.detail", name=sheet.name),
+                        "sub": c.item_key.split("|", 1)[0] if c.item_key else "",
+                    })
+                for gname in gorder:
+                    node["groups"].append({"name": gname, "count": len(gmap[gname]),
+                                           "leaves": gmap[gname]})
+                node["count"] = len(cols)
+        
+        return node
+
     tree = []
     for s in sheets:
-        node = {
-            "name": s.name, "kind": s.kind, "order": s.sort_order,
-            "groups": [], "count": 0,
-            "url": url_for("sheets.detail", name=s.name),
-        }
-        if s.kind == "balances":
-            accs = accounts_by_sheet.get(s.name, [])
-            gmap: dict = {}
-            gorder: list = []
-            for a in accs:
-                gname = a.group or a.type or "其他"
-                if gname not in gmap:
-                    gmap[gname] = []
-                    gorder.append(gname)
-                gmap[gname].append({
-                    "name": a.name,
-                    "url": url_for("sheets.detail", name=s.name),
-                    "sub": f"{a.owner} · {a.type}",
-                })
-            for gname in gorder:
-                node["groups"].append({"name": gname, "count": len(gmap[gname]),
-                                       "leaves": gmap[gname]})
-            node["count"] = len(accs)
-        elif s.kind == "entries":
-            cols = cols_by_sheet.get(s.name, [])
-            gmap: dict = {}
-            gorder: list = []
-            for c in cols:
-                if c.group not in gmap:
-                    gmap[c.group] = []
-                    gorder.append(c.group)
-                gmap[c.group].append({
-                    "name": c.name,
-                    "url": url_for("sheets.detail", name=s.name),
-                    "sub": c.item_key.split("|", 1)[0] if c.item_key else "",
-                })
-            for gname in gorder:
-                node["groups"].append({"name": gname, "count": len(gmap[gname]),
-                                       "leaves": gmap[gname]})
-            node["count"] = len(cols)
-        tree.append(node)
+        tree.append(build_sheet_node(s))
     return tree
 
 

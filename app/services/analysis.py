@@ -290,32 +290,41 @@ def forecast_assets(future_months: int = 12, user_id: str = "") -> dict:
 
 
 # -------------------------------------------------------------- Dashboard 概览
-def dashboard_overview(user_id: str = "") -> dict:
+def dashboard_overview(user_id: str = "", year: int = None, month: int = None) -> dict:
     """首页概览: 最新月份汇总 + 近 12 个月趋势 + Top 项目 (按 user_id 隔离)"""
-    # 找到最新有 Entry 数据的月份
-    le_q = select(Entry)
-    if user_id:
-        le_q = le_q.where(Entry.user_id == user_id)
-    le_q = le_q.order_by(Entry.year.desc(), Entry.month.desc()).limit(1)
-    latest_entry = db.session.execute(le_q).scalars().first()
-
-    # 找到最新有 BalanceSnapshot 数据的月份
-    lb_q = select(BalanceSnapshot)
-    if user_id:
-        lb_q = lb_q.where(BalanceSnapshot.user_id == user_id)
-    lb_q = lb_q.order_by(
-        BalanceSnapshot.year.desc(), BalanceSnapshot.month.desc()
-    ).limit(1)
-    latest_bal = db.session.execute(lb_q).scalars().first()
-
     now = datetime.now()
-    # 优先取 Entry 最新月份; 若无则 Balance; 都无则当月
-    if latest_entry:
-        year, month = latest_entry.year, latest_entry.month
-    elif latest_bal:
-        year, month = latest_bal.year, latest_bal.month
+    
+    # 如果没有指定年月，自动找到最新有数据的月份
+    if year is None or month is None:
+        # 找到最新有 Entry 数据的月份
+        le_q = select(Entry)
+        if user_id:
+            le_q = le_q.where(Entry.user_id == user_id)
+        le_q = le_q.order_by(Entry.year.desc(), Entry.month.desc()).limit(1)
+        latest_entry = db.session.execute(le_q).scalars().first()
+
+        # 找到最新有 BalanceSnapshot 数据的月份
+        lb_q = select(BalanceSnapshot)
+        if user_id:
+            lb_q = lb_q.where(BalanceSnapshot.user_id == user_id)
+        lb_q = lb_q.order_by(
+            BalanceSnapshot.year.desc(), BalanceSnapshot.month.desc()
+        ).limit(1)
+        latest_bal = db.session.execute(lb_q).scalars().first()
+
+        # 优先取 Entry 最新月份; 若无则 Balance; 都无则当月
+        if latest_entry:
+            year, month = latest_entry.year, latest_entry.month
+        elif latest_bal:
+            year, month = latest_bal.year, latest_bal.month
+        else:
+            year, month = now.year, now.month
     else:
-        year, month = now.year, now.month
+        # 确保年月有效
+        if year is None:
+            year = now.year
+        if month is None:
+            month = now.month
 
     summary = monthly_summary(year, month, user_id=user_id)
 
@@ -333,14 +342,25 @@ def dashboard_overview(user_id: str = "") -> dict:
     if user_id:
         aq = aq.where(BalanceSnapshot.user_id == user_id)
     asset_total = db.session.execute(aq).scalar()
-    if not asset_total and latest_bal:
-        aq2 = select(func.sum(BalanceSnapshot.value)).where(
-            BalanceSnapshot.year == latest_bal.year,
-            BalanceSnapshot.month == latest_bal.month,
-        )
+    
+    # 如果该月无结余数据，找最近有结余的月份
+    if not asset_total:
+        lb_q = select(BalanceSnapshot)
         if user_id:
-            aq2 = aq2.where(BalanceSnapshot.user_id == user_id)
-        asset_total = db.session.execute(aq2).scalar() or 0
+            lb_q = lb_q.where(BalanceSnapshot.user_id == user_id)
+        lb_q = lb_q.order_by(
+            BalanceSnapshot.year.desc(), BalanceSnapshot.month.desc()
+        ).limit(1)
+        latest_bal = db.session.execute(lb_q).scalars().first()
+        if latest_bal:
+            aq2 = select(func.sum(BalanceSnapshot.value)).where(
+                BalanceSnapshot.year == latest_bal.year,
+                BalanceSnapshot.month == latest_bal.month,
+            )
+            if user_id:
+                aq2 = aq2.where(BalanceSnapshot.user_id == user_id)
+            asset_total = db.session.execute(aq2).scalar() or 0
+    
     asset_total = float(asset_total or 0)
 
     # 各条目年度累计 Top

@@ -25,6 +25,10 @@ _EXPECTED_COLUMNS = {
     "balance_snapshot": [
         ("user_id", "VARCHAR(64) DEFAULT ''"),
     ],
+    "sheet": [
+        ("parent_id", "INTEGER"),
+        ("level", "INTEGER DEFAULT 0"),
+    ],
 }
 
 # 旧唯一索引 -> 新唯一索引 (包含 user_id)
@@ -40,6 +44,12 @@ _INDEX_REBUILDS = [
         "old_idx": "uq_snapshot_month_account",
         "new_idx": "uq_snapshot_month_account_user",
         "cols": "year, month, account_id, user_id",
+    },
+    {
+        "table": "sheet",
+        "old_idx": "uq_sheet_name",  # 旧的唯一约束
+        "new_idx": "uq_sheet_name_parent",  # 新的唯一约束包含parent_id
+        "cols": "name, parent_id",
     },
 ]
 

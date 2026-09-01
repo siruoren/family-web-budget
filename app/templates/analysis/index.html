@@ -11,11 +11,21 @@
         <option value="{{ y }}" {% if y == year_from %}selected{% endif %}>{{ y }}</option>
         {% endfor %}
       </select>
+      <select name="month_from">
+        {% for m in range(1, 13) %}
+        <option value="{{ m }}" {% if m == month_from %}selected{% endif %}>{{ m }}月</option>
+        {% endfor %}
+      </select>
     </label>
     <label>到
       <select name="year_to">
         {% for y in range(current_year - 6, current_year + 1) %}
         <option value="{{ y }}" {% if y == year_to %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+      <select name="month_to">
+        {% for m in range(1, 13) %}
+        <option value="{{ m }}" {% if m == month_to %}selected{% endif %}>{{ m }}月</option>
         {% endfor %}
       </select>
     </label>
@@ -55,7 +65,9 @@
 {% block scripts %}
 <script>
 const YEAR_FROM = {{ year_from }};
+const MONTH_FROM = {{ month_from }};
 const YEAR_TO = {{ year_to }};
+const MONTH_TO = {{ month_to }};
 
 const COLORS = ["#2563eb","#16a34a","#dc2626","#d97706","#7c3aed",
   "#0891b2","#db2777","#65a30d","#475569","#0ea5e9","#f59e0b","#10b981"];
@@ -71,7 +83,7 @@ async function safeFetch(url) {
 (async function(){
   try {
   // 1) 趋势图
-  const seriesData = await safeFetch(`/api/analysis/series?year_from=${YEAR_FROM}&month_from=1&year_to=${YEAR_TO}&month_to=12`);
+  const seriesData = await safeFetch(`/api/analysis/series?year_from=${YEAR_FROM}&month_from=${MONTH_FROM}&year_to=${YEAR_TO}&month_to=${MONTH_TO}`);
   const series = seriesData.series || [];
   new Chart(document.getElementById("trendChart"), {
     type: "bar",

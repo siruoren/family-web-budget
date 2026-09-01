@@ -85,10 +85,44 @@ def index():
         select(ImportLog).order_by(ImportLog.imported_at.desc()).limit(10)
     ).scalars().all()
 
-    # ---- 菜单管理: 所有 Sheet ----
+    # ---- 菜单管理: 所有 Sheet (按层级排序) ----
     sheets = db.session.execute(
-        select(Sheet).order_by(Sheet.sort_order, Sheet.id)
+        select(Sheet).order_by(Sheet.level, Sheet.sort_order, Sheet.id)
     ).scalars().all()
+    
+    # 构建菜单树结构供前端显示
+    def build_menu_tree(parent_id=None):
+        """递归构建菜单树"""
+        children = db.session.execute(
+            select(Sheet).where(
+                Sheet.parent_id == parent_id if parent_id is not None else Sheet.parent_id.is_(None)
+            ).order_by(Sheet.sort_order, Sheet.id)
+        ).scalars().all()
+        
+        result = []
+        for sheet in children:
+            node = {
+                'id': sheet.id,
+                'name': sheet.name,
+                'kind': sheet.kind,
+                'level': sheet.level,
+                'is_active': sheet.is_active,
+                'sort_order': sheet.sort_order,
+                'children': build_menu_tree(sheet.id)
+            }
+            result.append(node)
+        return result
+    
+    menu_tree = build_menu_tree()
+    
+    # 获取所有菜单供父菜单选择 (排除自己)
+    def get_all_sheets_flat():
+        """获取所有菜单的扁平列表"""
+        return db.session.execute(
+            select(Sheet).order_by(Sheet.level, Sheet.sort_order, Sheet.id)
+        ).scalars().all()
+    
+    all_sheets = get_all_sheets_flat()
 
     # ---- 账户管理: 所有账户 ----
     accounts = db.session.execute(
@@ -101,6 +135,7 @@ def index():
         active_locks=active_locks, all_settings=all_settings,
         my_user_id=g.user_id, my_user_label=session.get("user_label", ""),
         logs=logs, sheets=sheets, accounts=accounts,
+        menu_tree=menu_tree, all_sheets=all_sheets,
     )
 
 
@@ -285,19 +320,46 @@ def sheet_add():
     """新增工作表 (左侧菜单项)"""
     name = request.form.get("sheet_name", "").strip()
     kind = request.form.get("sheet_kind", "entries")
+    parent_id = request.form.get("parent_id", type=int)
+    
     if not name:
         flash("菜单名称不能为空", "error")
         return redirect(url_for("settings.index"))
-    existing = db.session.execute(
-        select(Sheet).where(Sheet.name == name)
-    ).scalars().first()
+    
+    # 检查同级是否有重名
+    query = select(Sheet).where(Sheet.name == name)
+    if parent_id:
+        query = query.where(Sheet.parent_id == parent_id)
+    else:
+        query = query.where(Sheet.parent_id.is_(None))
+    
+    existing = db.session.execute(query).scalars().first()
     if existing:
-        flash(f"菜单 '{name}' 已存在", "error")
+        flash(f"同级菜单 '{name}' 已存在", "error")
         return redirect(url_for("settings.index"))
-    max_order = db.session.query(func.max(Sheet.sort_order)).scalar() or 0
+    
+    # 计算层级
+    level = 0
+    if parent_id:
+        parent = db.session.get(Sheet, parent_id)
+        if parent:
+            level = parent.level + 1
+        else:
+            flash("父菜单不存在", "error")
+            return redirect(url_for("settings.index"))
+    
+    # 计算同级排序
+    order_query = select(func.max(Sheet.sort_order))
+    if parent_id:
+        order_query = order_query.where(Sheet.parent_id == parent_id)
+    else:
+        order_query = order_query.where(Sheet.parent_id.is_(None))
+    max_order = db.session.execute(order_query).scalar() or 0
+    
     db.session.add(Sheet(
         name=name, kind=kind, sort_order=max_order + 1,
         is_active=True, source_file="manual",
+        parent_id=parent_id, level=level,
     ))
     db.session.commit()
     flash(f"已添加菜单: {name} ({kind})", "success")
@@ -306,29 +368,72 @@ def sheet_add():
 
 @bp.route("/sheets/<int:sheet_id>/edit", methods=["POST"])
 def sheet_edit(sheet_id: int):
-    """重命名工作表 / 修改类型"""
+    """重命名工作表 / 修改类型 / 修改父菜单"""
     sheet = db.session.get(Sheet, sheet_id)
     if not sheet:
         flash("菜单不存在", "error")
         return redirect(url_for("settings.index"))
     new_name = request.form.get("sheet_name", "").strip()
     new_kind = request.form.get("sheet_kind", sheet.kind)
+    new_parent_id = request.form.get("parent_id", type=int)
+    
     if not new_name:
         flash("菜单名称不能为空", "error")
         return redirect(url_for("settings.index"))
-    if new_name != sheet.name:
-        dup = db.session.execute(
-            select(Sheet).where(Sheet.name == new_name)
-        ).scalars().first()
+    
+    # 检查同级是否有重名
+    if new_name != sheet.name or new_parent_id != sheet.parent_id:
+        query = select(Sheet).where(Sheet.name == new_name)
+        if new_parent_id:
+            query = query.where(Sheet.parent_id == new_parent_id)
+        else:
+            query = query.where(Sheet.parent_id.is_(None))
+        query = query.where(Sheet.id != sheet_id)  # 排除自己
+        
+        dup = db.session.execute(query).scalars().first()
         if dup:
-            flash(f"菜单名 '{new_name}' 已被占用", "error")
+            flash(f"同级菜单名 '{new_name}' 已被占用", "error")
             return redirect(url_for("settings.index"))
+    
+    if new_name != sheet.name:
         old_name = sheet.name
         sheet.name = new_name
         db.session.query(Item).filter(Item.sheet == old_name).update({"sheet": new_name})
         db.session.query(Account).filter(Account.sheet == old_name).update({"sheet": new_name})
         db.session.query(SheetColumn).filter(SheetColumn.sheet_name == old_name).update({"sheet_name": new_name})
+    
     sheet.kind = new_kind
+    
+    # 更新父菜单和层级
+    if new_parent_id != sheet.parent_id:
+        # 防止循环引用
+        if new_parent_id == sheet.id:
+            flash("不能将自己设为父菜单", "error")
+            return redirect(url_for("settings.index"))
+        
+        # 检查是否会造成循环引用
+        def is_descendant(parent_id, child_id):
+            """检查child_id是否是parent_id的后代"""
+            if parent_id == child_id:
+                return True
+            parent = db.session.get(Sheet, parent_id)
+            if parent and parent.parent_id:
+                return is_descendant(parent.parent_id, child_id)
+            return False
+        
+        if new_parent_id and is_descendant(new_parent_id, sheet.id):
+            flash("不能将菜单移动到自己的子菜单下", "error")
+            return redirect(url_for("settings.index"))
+        
+        sheet.parent_id = new_parent_id
+        # 重新计算层级
+        if new_parent_id:
+            parent = db.session.get(Sheet, new_parent_id)
+            if parent:
+                sheet.level = parent.level + 1
+        else:
+            sheet.level = 0
+    
     db.session.commit()
     flash(f"已更新菜单: {new_name}", "success")
     return redirect(url_for("settings.index"))
@@ -336,28 +441,24 @@ def sheet_edit(sheet_id: int):
 
 @bp.route("/sheets/<int:sheet_id>/delete", methods=["POST"])
 def sheet_delete(sheet_id: int):
-    """删除 (停用) 工作表"""
+    """删除工作表 (级联删除子菜单)"""
     sheet = db.session.get(Sheet, sheet_id)
     if not sheet:
         flash("菜单不存在", "error")
         return redirect(url_for("settings.index"))
+    
     name = sheet.name
-    sheet.is_active = False
+    
+    # 级联删除所有子菜单
+    def delete_recursive(sheet_obj):
+        """递归删除子菜单"""
+        for child in sheet_obj.children:
+            delete_recursive(child)
+        db.session.delete(sheet_obj)
+    
+    delete_recursive(sheet)
     db.session.commit()
-    flash(f"已隐藏菜单: {name}", "success")
-    return redirect(url_for("settings.index"))
-
-
-@bp.route("/sheets/<int:sheet_id>/restore", methods=["POST"])
-def sheet_restore(sheet_id: int):
-    """恢复已隐藏的工作表"""
-    sheet = db.session.get(Sheet, sheet_id)
-    if not sheet:
-        flash("菜单不存在", "error")
-        return redirect(url_for("settings.index"))
-    sheet.is_active = True
-    db.session.commit()
-    flash(f"已恢复菜单: {sheet.name}", "success")
+    flash(f"已删除菜单及其子菜单: {name}", "success")
     return redirect(url_for("settings.index"))
 
 
