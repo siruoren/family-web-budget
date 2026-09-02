@@ -1,32 +1,39 @@
-"""
-分析与预测服务
+"""分析与统计服务 - 基于 Asset 表
 
-- 月度收支汇总
-- 项目趋势时序 (按 Item 聚合)
-- 历史各项目趋势与建议
-- 未来资产趋势预测 (线性回归 / 月增长率)
+- 月度汇总 (按 AccountItem.type 分组)
+- 项目趋势时序
+- 区间数据
+- Dashboard 概览
 """
 from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime
 from sqlalchemy import select, func, and_
 from .. import db
-from ..models import Entry, Item, BalanceSnapshot, Account
+from ..models import Asset, AccountItem, User
 
 
 # -------------------------------------------------------------- 通用工具
-def _periods_range(year_from: int, month_from: int,
-                   year_to: int, month_to: int) -> list[tuple[int, int]]:
+def _periods_range(yf: int, mf: int, yt: int, mt: int) -> list[tuple[int, int]]:
     """生成 (year, month) 连续序列"""
     out: list[tuple[int, int]] = []
-    y, m = year_from, month_from
-    while (y, m) <= (year_to, month_to):
+    y, m = yf, mf
+    while (y, m) <= (yt, mt):
         out.append((y, m))
         m += 1
         if m > 12:
             m = 1
             y += 1
     return out
+
+
+def _prev_month(year: int, month: int) -> tuple[int, int]:
+    """上一个月"""
+    m = month - 1
+    if m < 1:
+        m = 12
+        year -= 1
+    return year, m
 
 
 def _linear_regression(xs: list[float], ys: list[float]) -> tuple[float, float]:
@@ -49,338 +56,180 @@ def _linear_regression(xs: list[float], ys: list[float]) -> tuple[float, float]:
 
 
 # -------------------------------------------------------------- 月度汇总
-def monthly_summary(year: int, month: int, user_id: str = "") -> dict:
-    """指定月份: 收入 / 支出 / 结余明细 (按 user_id 隔离)"""
-    q = select(Entry, Item).join(Item, Entry.item_id == Item.id).where(
-        Entry.year == year, Entry.month == month
+def monthly_summary(year: int, month: int, user_id: int) -> dict:
+    """指定月份: 按 AccountItem.type 分组的资产明细"""
+    q = select(Asset, AccountItem).join(
+        AccountItem, Asset.account_item_id == AccountItem.id
+    ).where(
+        Asset.year == year, Asset.month == month,
+        Asset.user_id == user_id,
     )
-    if user_id:
-        q = q.where(Entry.user_id == user_id)
     entries = db.session.execute(q).all()
 
-    income_items: list[dict] = []
-    expense_items: list[dict] = []
-    income_total = 0.0
-    expense_total = 0.0
+    groups: dict[str, list[dict]] = defaultdict(list)
+    totals: dict[str, float] = defaultdict(float)
 
-    for e, it in entries:
-        val = float(e.value or 0)
+    for a, it in entries:
+        val = float(a.value or 0)
         row = {
-            "entry_id": e.id, "item_id": it.id, "name": it.name,
-            "owner": it.owner, "sub_category": it.sub_category,
-            "value": val, "note": e.note or "", "source": e.source,
+            "asset_id": a.id, "item_id": it.id, "name": it.name,
+            "type": it.type, "owner": it.owner, "note": it.note,
+            "value": val, "asset_note": a.note or "", "source": a.source,
         }
-        if it.category == "收入":
-            income_items.append(row)
-            income_total += val
-        elif it.category == "支出":
-            expense_items.append(row)
-            expense_total += val
+        groups[it.type].append(row)
+        totals[it.type] += val
 
-    net = income_total - expense_total
     return {
         "year": year, "month": month,
-        "income_total": round(income_total, 2),
-        "expense_total": round(expense_total, 2),
-        "net": round(net, 2),
-        "income_items": income_items,
-        "expense_items": expense_items,
+        "groups": dict(groups),
+        "totals": dict(totals),
+        "income_total": round(totals.get("收入", 0), 2),
+        "expense_total": round(totals.get("支出", 0), 2),
+        "balance_total": round(totals.get("结余", 0), 2),
     }
 
 
-# -------------------------------------------------------------- 趋势时序
-def period_series(year_from: int, month_from: int,
-                  year_to: int, month_to: int, user_id: str = "") -> list[dict]:
-    """区间内每月: 收入/支出/净额 (按 user_id 隔离)"""
-    periods = _periods_range(year_from, month_from, year_to, month_to)
-    q = select(Entry.year, Entry.month, Item.category, func.sum(Entry.value))
-    q = q.join(Item, Entry.item_id == Item.id)
-    q = q.where(Entry.year >= year_from, Entry.year <= year_to + 1)
-    if user_id:
-        q = q.where(Entry.user_id == user_id)
-    q = q.group_by(Entry.year, Entry.month, Item.category)
+# -------------------------------------------------------------- 未填写提醒
+def missing_items(year: int, month: int, user_id: int) -> list[dict]:
+    """找出当月未填写的条目"""
+    all_items = db.session.execute(
+        select(AccountItem).where(AccountItem.is_active == True).order_by(
+            AccountItem.type, AccountItem.sort_order, AccountItem.id
+        )
+    ).scalars().all()
+
+    filled_ids = set(
+        r[0] for r in db.session.execute(
+            select(Asset.account_item_id).where(
+                Asset.year == year, Asset.month == month,
+                Asset.user_id == user_id,
+            )
+        ).all()
+    )
+
+    return [
+        {"id": it.id, "name": it.name, "type": it.type, "owner": it.owner}
+        for it in all_items if it.id not in filled_ids
+    ]
+
+
+# -------------------------------------------------------------- 区间时序
+def period_series(yf: int, mf: int, yt: int, mt: int, user_id: int) -> list[dict]:
+    """区间内每月: 各 type 合计"""
+    periods = _periods_range(yf, mf, yt, mt)
+    q = select(
+        Asset.year, Asset.month, AccountItem.type,
+        func.sum(Asset.value)
+    ).join(
+        AccountItem, Asset.account_item_id == AccountItem.id
+    ).where(
+        Asset.user_id == user_id,
+    ).group_by(Asset.year, Asset.month, AccountItem.type)
     rows = db.session.execute(q).all()
 
-    by_period_cat: dict[tuple, float] = {}
+    by_pcat: dict[tuple, float] = {}
     for y, m, cat, val in rows:
-        if (y, m) not in periods:
-            continue
-        by_period_cat[(y, m, cat)] = float(val or 0)
+        by_pcat[(y, m, cat)] = float(val or 0)
 
     out = []
     for y, m in periods:
-        inc = by_period_cat.get((y, m, "收入"), 0)
-        exp = by_period_cat.get((y, m, "支出"), 0)
+        inc = by_pcat.get((y, m, "收入"), 0)
+        exp = by_pcat.get((y, m, "支出"), 0)
+        bal = by_pcat.get((y, m, "结余"), 0)
         out.append({
             "year": y, "month": m, "label": f"{y}-{m:02d}",
             "income": round(inc, 2), "expense": round(exp, 2),
+            "balance": round(bal, 2),
             "net": round(inc - exp, 2),
         })
     return out
 
 
-# -------------------------------------------------------------- 项目趋势
-def item_trend(item_id: int, year_from: int, year_to: int, user_id: str = "") -> dict:
-    """单条目月度时序 (按 user_id 隔离)"""
-    item = db.session.get(Item, item_id)
+# -------------------------------------------------------------- 单条目趋势
+def item_trend(item_id: int, yf: int, mf: int, yt: int, mt: int,
+               user_id: int) -> dict:
+    """单条目区间月度时序"""
+    item = db.session.get(AccountItem, item_id)
     if not item:
         return {}
-    q = select(Entry.year, Entry.month, Entry.value).where(
-        Entry.item_id == item_id,
-        Entry.year >= year_from, Entry.year <= year_to,
-    )
-    if user_id:
-        q = q.where(Entry.user_id == user_id)
-    q = q.order_by(Entry.year, Entry.month)
+    q = select(Asset.year, Asset.month, Asset.value).where(
+        Asset.account_item_id == item_id,
+        Asset.user_id == user_id,
+    ).order_by(Asset.year, Asset.month)
     rows = db.session.execute(q).all()
+
+    # 过滤到区间内
+    periods = set(_periods_range(yf, mf, yt, mt))
     series = [
         {"year": y, "month": m, "label": f"{y}-{m:02d}",
          "value": float(v or 0)}
-        for y, m, v in rows
+        for y, m, v in rows if (y, m) in periods
     ]
-    # 趋势线
+
     xs = [float(i) for i in range(len(series))]
     ys = [p["value"] for p in series]
     slope, intercept = _linear_regression(xs, ys)
+    avg = sum(ys) / max(len(ys), 1)
+
     return {
         "item": {
-            "id": item.id, "name": item.name, "category": item.category,
-            "owner": item.owner, "sub_category": item.sub_category,
+            "id": item.id, "name": item.name,
+            "type": item.type, "owner": item.owner,
         },
         "series": series,
+        "avg": round(avg, 2),
+        "sum": round(sum(ys), 2),
         "slope": round(slope, 2),
-        "intercept": round(intercept, 2),
         "trend": "上升" if slope > 0 else ("下降" if slope < 0 else "平稳"),
     }
 
 
-# -------------------------------------------------------------- 全部项目趋势
-def all_item_trends(year_from: int, year_to: int, user_id: str = "") -> list[dict]:
-    items = db.session.execute(
-        select(Item).where(Item.is_active == True).order_by(
-            Item.category, Item.sort_order
-        )
-    ).scalars().all()
-    out = []
-    for it in items:
-        trend = item_trend(it.id, year_from, year_to, user_id=user_id)
-        if not trend:
-            continue
-        # 建议生成
-        avg = sum(p["value"] for p in trend["series"]) / max(len(trend["series"]), 1)
-        advice = _advice_for_item(trend, avg)
-        trend["avg"] = round(avg, 2)
-        trend["advice"] = advice
-        out.append(trend)
-    return out
-
-
-def _advice_for_item(trend: dict, avg: float) -> str:
-    """根据趋势给文字建议"""
-    slope = trend["slope"]
-    name = trend["item"]["name"]
-    cat = trend["item"]["category"]
-    if cat == "收入":
-        if slope > 0:
-            return f"{name} 月均 {avg:.2f} 元且呈上升趋势, 保持稳定收入来源。"
-        if slope < 0:
-            return f"{name} 月均 {avg:.2f} 元但有下降趋势, 需关注收入稳定性。"
-        return f"{name} 月均 {avg:.2f} 元, 趋势平稳。"
-    if cat == "支出":
-        if slope > 0:
-            return f"{name} 月均 {avg:.2f} 元且支出在增长, 建议审视该支出可否压缩。"
-        if slope < 0:
-            return f"{name} 月均 {avg:.2f} 元且支出在下降, 控制良好。"
-        return f"{name} 月均 {avg:.2f} 元, 支出平稳。"
-    return f"{name} 月均 {avg:.2f} 元。"
-
-
-# -------------------------------------------------------------- 资产预测
-def forecast_assets(future_months: int = 12, user_id: str = "") -> dict:
-    """
-    未来资产趋势预测 (按 user_id 隔离):
-      - 取最近有数据的 N 个月的月末总资产 (BalanceSnapshot 合计) 作为历史
-      - 用线性回归 + 月增长率两种方式外推
-      - 假设月度净储蓄 = 平均月收入 - 平均月支出
-    """
-    # 取所有月末总资产时序 (按时间排序), 取最近 12 期
-    q = select(BalanceSnapshot.year, BalanceSnapshot.month,
-               func.sum(BalanceSnapshot.value))
-    if user_id:
-        q = q.where(BalanceSnapshot.user_id == user_id)
-    q = q.group_by(BalanceSnapshot.year, BalanceSnapshot.month)
-    q = q.order_by(BalanceSnapshot.year, BalanceSnapshot.month)
-    rows = db.session.execute(q).all()
-
-    all_periods = [
-        {"year": y, "month": m, "label": f"{y}-{m:02d}",
-         "value": float(val or 0)}
-        for y, m, val in rows
-    ]
-    history = all_periods[-12:] if all_periods else []
-
-    # 如果没有结余数据, 用收入-支出累计模拟
-    if not history:
-        return {
-            "history": [],
-            "forecast": [],
-            "monthly_net": 0.0,
-            "growth_rate": 0.0,
-            "slope": None,
-            "note": "暂无月末结余数据, 请先导入历史数据或填写结余。",
-        }
-
-    last_value = history[-1]["value"]
-    xs = [float(i) for i in range(len(history))]
-    ys = [h["value"] for h in history]
-    slope, intercept = _linear_regression(xs, ys)
-
-    # 月增长率 (几何平均)
-    growth = 0.0
-    if len(history) >= 2 and history[0]["value"] != 0:
-        growth = (history[-1]["value"] / history[0]["value"]) ** (
-            1 / (len(history) - 1)
-        ) - 1
-
-    # 预测 future_months 个月
-    forecast: list[dict] = []
-    for i in range(1, future_months + 1):
-        x = len(history) - 1 + i
-        # 线性外推
-        lin_val = slope * x + intercept
-        # 复合增长
-        grow_val = last_value * ((1 + growth) ** i)
-        # 平均值作为最终值 (避免极端)
-        final = (lin_val + grow_val) / 2
-        # 计算预测月份
-        y = history[-1]["year"]
-        m = history[-1]["month"] + i
-        while m > 12:
-            m -= 12
-            y += 1
-        forecast.append({
-            "year": y, "month": m, "label": f"{y}-{m:02d}",
-            "value": round(final, 2),
-            "linear": round(lin_val, 2),
-            "growth": round(grow_val, 2),
-        })
-
-    # 平均月净额 (用于提示)
-    nq = select(Entry.year, Entry.month, Item.category,
-               func.sum(Entry.value))
-    nq = nq.join(Item, Entry.item_id == Item.id)
-    if user_id:
-        nq = nq.where(Entry.user_id == user_id)
-    nq = nq.group_by(Entry.year, Entry.month, Item.category)
-    net_rows = db.session.execute(nq).all()
-    inc_sum = sum(float(v or 0) for _, _, c, v in net_rows if c == "收入")
-    exp_sum = sum(float(v or 0) for _, _, c, v in net_rows if c == "支出")
-    n_months = len({(y, m) for y, m, _, _ in net_rows}) or 1
-    monthly_net = (inc_sum - exp_sum) / n_months
-
-    return {
-        "history": history,
-        "forecast": forecast,
-        "monthly_net": round(monthly_net, 2),
-        "growth_rate": round(growth * 100, 2),
-        "slope": round(slope, 2),
-        "last_period": history[-1]["label"],
-        "history_count": len(history),
-    }
-
-
 # -------------------------------------------------------------- Dashboard 概览
-def dashboard_overview(user_id: str = "", year: int = None, month: int = None) -> dict:
-    """首页概览: 最新月份汇总 + 近 12 个月趋势 + Top 项目 (按 user_id 隔离)"""
+def dashboard_overview(user_id: int, year: int = None,
+                        month: int = None) -> dict:
+    """首页概览: 最新月份汇总 + 近 12 个月趋势 + Top 项目"""
     now = datetime.now()
-    
-    # 如果没有指定年月，自动找到最新有数据的月份
+
     if year is None or month is None:
-        # 找到最新有 Entry 数据的月份
-        le_q = select(Entry)
-        if user_id:
-            le_q = le_q.where(Entry.user_id == user_id)
-        le_q = le_q.order_by(Entry.year.desc(), Entry.month.desc()).limit(1)
-        latest_entry = db.session.execute(le_q).scalars().first()
-
-        # 找到最新有 BalanceSnapshot 数据的月份
-        lb_q = select(BalanceSnapshot)
-        if user_id:
-            lb_q = lb_q.where(BalanceSnapshot.user_id == user_id)
-        lb_q = lb_q.order_by(
-            BalanceSnapshot.year.desc(), BalanceSnapshot.month.desc()
-        ).limit(1)
-        latest_bal = db.session.execute(lb_q).scalars().first()
-
-        # 优先取 Entry 最新月份; 若无则 Balance; 都无则当月
-        if latest_entry:
-            year, month = latest_entry.year, latest_entry.month
-        elif latest_bal:
-            year, month = latest_bal.year, latest_bal.month
+        latest = db.session.execute(
+            select(Asset).where(Asset.user_id == user_id)
+            .order_by(Asset.year.desc(), Asset.month.desc()).limit(1)
+        ).scalars().first()
+        if latest:
+            year, month = latest.year, latest.month
         else:
             year, month = now.year, now.month
-    else:
-        # 确保年月有效
-        if year is None:
-            year = now.year
-        if month is None:
-            month = now.month
 
-    summary = monthly_summary(year, month, user_id=user_id)
+    summary = monthly_summary(year, month, user_id)
+    missing = missing_items(year, month, user_id)
 
-    # 近 12 个月趋势 (从所选月份回溯)
-    y_from = year - 1 if month == 12 else year
-    m_from = month + 1 if month < 12 else 1
-    if m_from == 1 and month == 12:
-        y_from = year
-    series = period_series(y_from, m_from, year, month, user_id=user_id)
+    # 近 12 个月趋势
+    py, pm = _prev_month(year, month)
+    yf = py - 1 if pm == 12 else py
+    mf = pm + 1 if pm < 12 else 1
+    series = period_series(yf, mf, year, month, user_id)
 
-    # 总资产 (该月结余快照合计); 若该月无结余, 取最近有结余的月份
-    aq = select(func.sum(BalanceSnapshot.value)).where(
-        BalanceSnapshot.year == year, BalanceSnapshot.month == month
-    )
-    if user_id:
-        aq = aq.where(BalanceSnapshot.user_id == user_id)
-    asset_total = db.session.execute(aq).scalar()
-    
-    # 如果该月无结余数据，找最近有结余的月份
-    if not asset_total:
-        lb_q = select(BalanceSnapshot)
-        if user_id:
-            lb_q = lb_q.where(BalanceSnapshot.user_id == user_id)
-        lb_q = lb_q.order_by(
-            BalanceSnapshot.year.desc(), BalanceSnapshot.month.desc()
-        ).limit(1)
-        latest_bal = db.session.execute(lb_q).scalars().first()
-        if latest_bal:
-            aq2 = select(func.sum(BalanceSnapshot.value)).where(
-                BalanceSnapshot.year == latest_bal.year,
-                BalanceSnapshot.month == latest_bal.month,
-            )
-            if user_id:
-                aq2 = aq2.where(BalanceSnapshot.user_id == user_id)
-            asset_total = db.session.execute(aq2).scalar() or 0
-    
-    asset_total = float(asset_total or 0)
-
-    # 各条目年度累计 Top
-    tq = select(Item.name, Item.category, Item.owner, func.sum(Entry.value))
-    tq = tq.join(Item, Entry.item_id == Item.id)
-    tq = tq.where(Entry.year == year)
-    if user_id:
-        tq = tq.where(Entry.user_id == user_id)
-    tq = tq.group_by(Item.id)
-    tq = tq.order_by(func.sum(Entry.value).desc()).limit(8)
+    # 年度 Top 条目
+    tq = select(
+        AccountItem.name, AccountItem.type, AccountItem.owner,
+        func.sum(Asset.value)
+    ).join(
+        AccountItem, Asset.account_item_id == AccountItem.id
+    ).where(
+        Asset.year == year, Asset.user_id == user_id,
+    ).group_by(AccountItem.id).order_by(
+        func.sum(Asset.value).desc()
+    ).limit(10)
     annual = db.session.execute(tq).all()
     top_items = [
-        {"name": n, "category": c, "owner": o, "value": float(v or 0)}
-        for n, c, o, v in annual
+        {"name": n, "type": t, "owner": o, "value": float(v or 0)}
+        for n, t, o, v in annual
     ]
 
     return {
         "year": year, "month": month,
         "summary": summary,
+        "missing": missing,
         "series": series,
-        "asset_total": asset_total,
         "top_items": top_items,
     }

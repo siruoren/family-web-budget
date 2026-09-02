@@ -1,3 +1,26 @@
+{% macro render_menu(nodes) %}
+{% for node in nodes %}
+  {% if node.children %}
+  <li class="tree-node">
+    <details class="tree-det">
+      <summary class="tree-summary">
+        {% if node.icon %}<span class="tree-icon">{{ node.icon }}</span>{% endif %}
+        <span class="tree-label">{{ node.name }}</span>
+        <span class="tree-count">{{ node.count }}</span>
+      </summary>
+      <ul class="tree-sub">{{ render_menu(node.children) }}</ul>
+    </details>
+  </li>
+  {% else %}
+  <li class="tree-leaf-li">
+    <a href="{{ node.url }}" class="tree-leaf-link">
+      <span class="leaf-dot"></span>{{ node.name }}
+      {% if node.count %}<span class="leaf-count">{{ node.count }}</span>{% endif %}
+    </a>
+  </li>
+  {% endif %}
+{% endfor %}
+{% endmacro %}
 <!doctype html>
 <html lang="zh-CN">
 <head>
@@ -6,196 +29,47 @@
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{% block title %}家庭记账单{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  {% block head %}{% endblock %}
 </head>
 <body>
-
-  {# ===== 用户名输入弹窗 (首次打开) ===== #}
-  {% if not user_label %}
-  <div id="username-modal" class="modal-overlay">
-    <div class="modal-box">
-      <h3>请输入您的用户名</h3>
-      <p class="muted">用户名即为数据归属 ID, 不同用户名数据相互隔离, 后续可在系统配置中切换</p>
-      <form id="username-form" method="post" action="{{ url_for('settings.set_username') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="text" name="user_label" id="username-input"
-               placeholder="例如: 李 / 朱 / 君军"
-               required maxlength="32"
-               autocomplete="off" autofocus>
-        <button type="submit" class="btn btn-block" style="margin-top:.75rem;">确认进入</button>
-      </form>
-    </div>
-  </div>
-  {% endif %}
 
   {# ===== 顶部菜单栏 ===== #}
   <nav class="topbar">
     <a class="brand" href="{{ url_for('dashboard.index') }}">君军之家 · 记账单</a>
     <div class="nav-links">
       <a href="{{ url_for('dashboard.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('dashboard') }}">首页</a>
-      <a href="{{ url_for('entries.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('entries') }}">月度条目</a>
-      <a href="{{ url_for('realtimestats.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('realtimestats') }}">实时统计</a>
+      <a href="{{ url_for('entries.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('entries') and not request.args.get('type') }}">月度条目</a>
+      <a href="{{ url_for('entries.index', type='结余') }}" class="{{ 'active' if request.endpoint == 'entries.index' and request.args.get('type') == '结余' }}">月末结余</a>
       <a href="{{ url_for('analysis.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('analysis') }}">智能分析</a>
       <a href="{{ url_for('settings.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('settings') }}">系统配置</a>
     </div>
-    {% if user_label %}
-    <span class="topbar-user">{{ user_label }}</span>
+    {% if all_users %}
+    <div class="topbar-user-switch">
+      <select onchange="location.href=this.value" title="切换用户">
+        {% for u in all_users %}
+        <option value="?uid={{ u.id }}" {{ 'selected' if current_user_id == u.id }}>{{ u.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
     {% endif %}
   </nav>
 
   <div class="layout">
     <aside class="sidebar">
-
-      {# ===== 工作表导航 ===== #}
       {% if sidebar_tree %}
+      <div class="sidebar-title">导航菜单</div>
       <ul class="tree">
-        {% for node in sidebar_tree %}
-        <li class="tree-node">
-          <details class="tree-sheet" {% if node.kind == 'balances' %}open{% endif %}>
-            <summary class="tree-sheet-head">
-              <span class="tree-sheet-name">{{ node.name }}</span>
-              {% if node.kind == 'balances' %}
-                <span class="tree-badge tag-balance">结余</span>
-              {% elif node.kind == 'entries' %}
-                <span class="tree-badge tag-income">账单</span>
-              {% else %}
-                <span class="tree-badge">{{ node.kind }}</span>
-              {% endif %}
-              <span class="tree-count">
-                {%- if node.count %} ({{ node.count }}){% endif -%}
-              </span>
-            </summary>
-
-            {% if node.children %}
-              {# 新的多层级子菜单 #}
-              <ul class="tree-sub">
-                {% for child in node.children %}
-                <li class="tree-group">
-                  <details class="tree-group-det">
-                    <summary class="tree-group-head">{{ child.name }}
-                      <span class="tree-badge {% if child.kind == 'balances' %}tag-balance{% elif child.kind == 'entries' %}tag-income{% endif %}">{{ child.kind }}</span>
-                      <span class="tree-count">({{ child.count }})</span>
-                    </summary>
-                    {# 递归显示更深层的子菜单 #}
-                    {% if child.children %}
-                      <ul class="tree-sub">
-                        {% for grandchild in child.children %}
-                        <li class="tree-group">
-                          <details class="tree-group-det">
-                            <summary class="tree-group-head">{{ grandchild.name }}
-                              <span class="tree-badge {% if grandchild.kind == 'balances' %}tag-balance{% elif grandchild.kind == 'entries' %}tag-income{% endif %}">{{ grandchild.kind }}</span>
-                              <span class="tree-count">({{ grandchild.count }})</span>
-                            </summary>
-                            {% if grandchild.groups %}
-                              <ul class="tree-leaves">
-                                {% for grp in grandchild.groups %}
-                                <li class="tree-group">
-                                  <details class="tree-group-det">
-                                    <summary class="tree-group-head">{{ grp.name }}
-                                      <span class="tree-count">({{ grp.count }})</span>
-                                    </summary>
-                                    <ul class="tree-leaves">
-                                      {% for leaf in grp.leaves %}
-                                      <li>
-                                        <a href="{{ leaf.url }}" class="tree-leaf"
-                                           title="{{ leaf.sub }}">
-                                          <span class="leaf-dot"></span>{{ leaf.name }}
-                                        </a>
-                                      </li>
-                                      {% endfor %}
-                                    </ul>
-                                  </details>
-                                </li>
-                                {% endfor %}
-                              </ul>
-                            {% else %}
-                              <ul class="tree-sub">
-                                <li class="tree-leaf-row">
-                                  <a class="tree-leaf" href="{{ grandchild.url }}">查看 ›</a>
-                                </li>
-                              </ul>
-                            {% endif %}
-                          </details>
-                        </li>
-                        {% endfor %}
-                      </ul>
-                    {% elif child.groups %}
-                      <ul class="tree-leaves">
-                        {% for grp in child.groups %}
-                        <li class="tree-group">
-                          <details class="tree-group-det">
-                            <summary class="tree-group-head">{{ grp.name }}
-                              <span class="tree-count">({{ grp.count }})</span>
-                            </summary>
-                            <ul class="tree-leaves">
-                              {% for leaf in grp.leaves %}
-                              <li>
-                                <a href="{{ leaf.url }}" class="tree-leaf"
-                                   title="{{ leaf.sub }}">
-                                  <span class="leaf-dot"></span>{{ leaf.name }}
-                                </a>
-                              </li>
-                              {% endfor %}
-                            </ul>
-                          </details>
-                        </li>
-                        {% endfor %}
-                      </ul>
-                    {% else %}
-                      <ul class="tree-sub">
-                        <li class="tree-leaf-row">
-                          <a class="tree-leaf" href="{{ child.url }}">查看 ›</a>
-                        </li>
-                      </ul>
-                    {% endif %}
-                  </details>
-                </li>
-                {% endfor %}
-              </ul>
-            {% elif node.groups %}
-              {# 原有的分组结构 #}
-              <ul class="tree-sub">
-                {% for grp in node.groups %}
-                <li class="tree-group">
-                  <details class="tree-group-det">
-                    <summary class="tree-group-head">{{ grp.name }}
-                      <span class="tree-count">({{ grp.count }})</span>
-                    </summary>
-                    <ul class="tree-leaves">
-                      {% for leaf in grp.leaves %}
-                      <li>
-                        <a href="{{ leaf.url }}" class="tree-leaf"
-                           title="{{ leaf.sub }}">
-                          <span class="leaf-dot"></span>{{ leaf.name }}
-                        </a>
-                      </li>
-                      {% endfor %}
-                    </ul>
-                  </details>
-                </li>
-                {% endfor %}
-              </ul>
-            {% else %}
-              <ul class="tree-sub">
-                <li class="tree-leaf-row">
-                  <a class="tree-leaf" href="{{ node.url }}">查看 ›</a>
-                </li>
-              </ul>
-            {% endif %}
-          </details>
-        </li>
-        {% endfor %}
+        {{ render_menu(sidebar_tree) }}
       </ul>
       {% else %}
       <div class="sidebar-empty">
-        <p>暂无工作表结构</p>
-        <a class="btn btn-sm" href="{{ url_for('settings.index') }}">去系统配置初始化</a>
+        <p>暂无菜单</p>
+        <a class="btn btn-sm" href="{{ url_for('settings.index') }}#menus">去配置菜单</a>
       </div>
       {% endif %}
-
     </aside>
 
-    <main class="container main-with-sidebar">
+    <main class="main-content">
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           <div class="flashes">
@@ -211,7 +85,7 @@
   </div>
 
   <footer class="footer">
-    <span>家庭记账单 · {{ user_label or '未命名' }} · {{ current_year }}</span>
+    <span>家庭记账单 · {{ current_user_name }} · {{ current_year }}</span>
   </footer>
 
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>

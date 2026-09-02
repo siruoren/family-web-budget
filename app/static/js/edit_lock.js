@@ -93,7 +93,7 @@
       span.textContent = "已锁定 · " + who + " (稍后刷新再试)";
       el.appendChild(span);
     }
-    var tr = document.getElementById((rt === "entry" ? "item-" : "acc-") + rid);
+    var tr = document.getElementById("row-" + rid);
     if (tr) tr.classList.add("row-locked");
   }
 
