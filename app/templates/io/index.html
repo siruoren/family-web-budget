@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}导入导出{% endblock %}
+
+{% block content %}
+<h2 class="section-title">数据导入导出</h2>
+
+<div class="grid grid-2">
+  <div class="card">
+    <div class="section-title" style="margin-top:0;">导入历史数据 (Excel / JSON / SQLite)</div>
+    <p class="muted">支持 .xlsx / .xls (历史账单表) · .db / .sqlite (整库) · .json (导出格式)</p>
+
+    <form method="post" enctype="multipart/form-data"
+          action="{{ url_for('import_export.import_excel_view') }}"
+          style="margin-bottom:1rem;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="file" name="file" accept=".xlsx,.xls" required style="margin-bottom:.5rem;">
+      <label>去重策略:
+        <select name="strategy">
+          <option value="skip">跳过已存在 (默认)</option>
+          <option value="overwrite">覆盖已存在</option>
+        </select>
+      </label>
+      <button type="submit" class="btn btn-block" style="margin-top:.5rem;">导入 Excel</button>
+    </form>
+
+    <form method="post" action="{{ url_for('import_export.import_sample') }}"
+          onsubmit="return confirm('一键导入示例 Excel 数据 (家庭统计表)? 现有相同周期数据会被跳过。')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>去重策略:
+        <select name="strategy">
+          <option value="skip">跳过已存在</option>
+          <option value="overwrite">覆盖已存在</option>
+        </select>
+      </label>
+      <button type="submit" class="btn btn-secondary btn-block" style="margin-top:.5rem;">
+        一键导入示例数据 (家庭统计表2021~2026)
+      </button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="section-title" style="margin-top:0;">初始化结构 (左侧菜单)</div>
+    <p class="muted">首次导入: 把 Excel 每个 sheet 登记为左侧大菜单, 用"家庭结余"表头建立 大类→小项 多级结构。</p>
+
+    <form method="post" action="{{ url_for('import_export.init_structure') }}"
+          onsubmit="return confirm('从 Excel 初始化结构? 已有结构会被补齐 (幂等)。')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-block">
+        从示例 Excel 初始化结构 (sheet + 大类/小项)
+      </button>
+    </form>
+
+    <form method="post" enctype="multipart/form-data"
+          action="{{ url_for('import_export.init_structure') }}"
+          style="margin-top:.5rem;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="source" value="upload">
+      <input type="file" name="file" accept=".xlsx,.xls" required style="margin-bottom:.5rem;">
+      <button type="submit" class="btn btn-secondary btn-block">从上传 Excel 初始化结构</button>
+    </form>
+    <p class="muted" style="margin-top:.5rem;font-size:.8rem;">
+      幂等操作, 重复执行只补齐缺失的 sheet / 账户 / 大类, 不影响已有数据。
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="section-title" style="margin-top:0;">导出指定月份/年份</div>
+    <p class="muted">留空 = 导出全部 (整库迁移)</p>
+    <form class="auto-submit" id="exportForm">
+      <label>年份:
+        <select name="year" form="exportForm">
+          <option value="">全部</option>
+          {% for y in range(current_year - 6, current_year + 1) %}
+          <option value="{{ y }}" {% if y == sel_year %}selected{% endif %}>{{ y }}年</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>月份:
+        <select name="month" form="exportForm">
+          <option value="">全部</option>
+          {% for m in range(1, 13) %}
+          <option value="{{ m }}" {% if m == sel_month %}selected{% endif %}>{{ m }}月</option>
+          {% endfor %}
+        </select>
+      </label>
+    </form>
+    <div class="grid grid-3" style="margin-top:.75rem;">
+      <a class="btn btn-secondary btn-block export-link" data-fmt="excel">Excel (.xlsx)</a>
+      <a class="btn btn-secondary btn-block export-link" data-fmt="json">JSON</a>
+      <a class="btn btn-secondary btn-block export-link" data-fmt="sqlite">SQLite (.db)</a>
+    </div>
+    <p class="muted" style="margin-top:.5rem;font-size:.8rem;">
+      SQLite 导出可直接迁移到其他实例 (整库或子集)
+    </p>
+  </div>
+</div>
+
+<div class="card" style="margin-top:1rem;">
+  <div class="section-title" style="margin-top:0;">导入历史日志</div>
+  {% if logs %}
+  <table>
+    <thead>
+      <tr><th>时间</th><th>来源</th><th>类型</th><th class="num">导入</th><th class="num">去重</th><th class="num">错误</th><th>策略</th><th>年份范围</th></tr>
+    </thead>
+    <tbody>
+      {% for log in logs %}
+      <tr>
+        <td>{{ log.imported_at.strftime('%Y-%m-%d %H:%M') if log.imported_at else '—' }}</td>
+        <td>{{ log.source_file }}</td>
+        <td><span class="badge">{{ log.kind }}</span></td>
+        <td class="num positive">{{ log.rows_imported }}</td>
+        <td class="num">{{ log.rows_skipped }}</td>
+        <td class="num negative">{{ log.rows_error }}</td>
+        <td>{{ log.message }}</td>
+        <td>{{ log.year_from }}~{{ log.year_to }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><p>暂无导入记录</p></div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 导出链接: 拼接 form 选中的 year/month
+document.querySelectorAll(".export-link").forEach(a => {
+  a.addEventListener("click", e => {
+    e.preventDefault();
+    const form = document.getElementById("exportForm");
+    const fd = new FormData(form);
+    const y = fd.get("year") || "";
+    const m = fd.get("month") || "";
+    const fmt = a.dataset.fmt;
+    const url = `/export/${fmt}?year=${y}&month=${m}`;
+    window.location.href = url;
+  });
+});
+</script>
+{% endblock %}

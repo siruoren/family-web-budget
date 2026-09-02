@@ -2,105 +2,207 @@
 {% block title %}智能分析{% endblock %}
 
 {% block content %}
-<section class="page-head">
-  <h2>智能分析 <small>{{ yf }}-{{ '%02d'%mf }} ~ {{ yt }}-{{ '%02d'%mt }} · {{ current_user_name }}</small></h2>
-</section>
+<div class="action-row">
+  <h2 class="section-title" style="margin:0;border:none;padding:0;">智能分析 · 量化资产趋势</h2>
+  <form class="auto-submit" method="get" style="margin-left:auto;">
+    <label>从
+      <select name="year_from">
+        {% for y in range(current_year - 6, current_year + 1) %}
+        <option value="{{ y }}" {% if y == year_from %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+      <select name="month_from">
+        {% for m in range(1, 13) %}
+        <option value="{{ m }}" {% if m == month_from %}selected{% endif %}>{{ m }}月</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>到
+      <select name="year_to">
+        {% for y in range(current_year - 6, current_year + 1) %}
+        <option value="{{ y }}" {% if y == year_to %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+      <select name="month_to">
+        {% for m in range(1, 13) %}
+        <option value="{{ m }}" {% if m == month_to %}selected{% endif %}>{{ m }}月</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+</div>
 
-<form class="card period-range auto-submit" method="get" action="{{ url_for('analysis.index') }}">
-  <input type="hidden" name="uid" value="{{ current_user_id }}">
-  <label>起 年<select name="yf">{% for y in range(current_year-5, current_year+1) %}<option value="{{ y }}" {{ 'selected' if y==yf }}>{{ y }}</option>{% endfor %}</select></label>
-  <label>月<select name="mf">{% for m in range(1,13) %}<option value="{{ m }}" {{ 'selected' if m==mf }}>{{ m }}</option>{% endfor %}</select></label>
-  <span class="muted">至</span>
-  <label>年<select name="yt">{% for y in range(current_year-5, current_year+1) %}<option value="{{ y }}" {{ 'selected' if y==yt }}>{{ y }}</option>{% endfor %}</select></label>
-  <label>月<select name="mt">{% for m in range(1,13) %}<option value="{{ m }}" {{ 'selected' if m==mt }}>{{ m }}</option>{% endfor %}</select></label>
-  <button class="btn btn-sm btn-primary">分析</button>
-</form>
+<div class="card">
+  <div class="section-title" style="margin-top:0;">收支趋势 (区间内)</div>
+  <div class="chart-wrap tall"><canvas id="trendChart"></canvas></div>
+</div>
 
-{% if anomalies %}
-<section class="alert alert-danger">
-  <strong>检测到 {{ anomalies|length }} 个异常月份:</strong>
-  {% for c in anomalies %}<span class="chip chip-warn">{{ c.year }}-{{ '%02d'%c.month }}</span>{% endfor %}
-</section>
-{% endif %}
-
-<section class="card chart-card">
-  <div class="card-hd">区间收支结余趋势</div>
-  <canvas id="rangeChart" height="120"></canvas>
-</section>
-
-<section class="card">
-  <div class="card-hd">各条目趋势 ({{ item_trends|length }})</div>
-  <div class="card-body">
-    <div class="table-wrap">
-    <table class="data-table">
-      <thead><tr><th>条目</th><th>类型</th><th>属主</th><th>均值</th><th>合计</th><th>斜率</th><th>趋势</th></tr></thead>
-      <tbody>
-      {% for t in item_trends %}
-      <tr>
-        <td>{{ t.item.name }}</td>
-        <td><span class="chip">{{ t.item.type }}</span></td>
-        <td>{{ t.item.owner }}</td>
-        <td>{{ t.avg|fmt_money }}</td>
-        <td>{{ t.sum|fmt_money }}</td>
-        <td>{{ t.slope|fmt_money }}</td>
-        <td><span class="chip {{ 'chip-income' if t.trend=='上升' else ('chip-expense' if t.trend=='下降' else '') }}">{{ t.trend }}</span></td>
-      </tr>
-      {% else %}
-      <tr><td colspan="7" class="empty-row">区间内暂无数据</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    </div>
+<div class="grid grid-2" style="margin-top:1rem;">
+  <div class="card">
+    <div class="section-title" style="margin-top:0;">收入结构占比</div>
+    <div class="chart-wrap"><canvas id="incomePie"></canvas></div>
   </div>
-</section>
-
-<section class="card">
-  <div class="card-hd">逐月公式核算 ({{ monthly_calcs|length }})</div>
-  <div class="card-body">
-    <div class="table-wrap">
-    <table class="data-table">
-      <thead><tr><th>月份</th><th>上月结余</th><th>收入</th><th>结余</th><th>公式支出</th><th>支出合计</th><th>差额(其他)</th><th>状态</th></tr></thead>
-      <tbody>
-      {% for c in monthly_calcs %}
-      <tr class="{{ 'row-anomaly' if c.anomaly }}">
-        <td>{{ c.year }}-{{ '%02d'%c.month }}</td>
-        <td>{{ c.last_balance|fmt_money }}</td>
-        <td>{{ c.income|fmt_money }}</td>
-        <td>{{ c.balance|fmt_money }}</td>
-        <td>{{ c.calculated_expense|fmt_money }}</td>
-        <td>{{ c.expense_items|fmt_money }}</td>
-        <td>{{ c.other_expense|fmt_money }}</td>
-        <td>{% if c.anomaly %}<span class="badge badge-danger">异常</span>{% else %}<span class="muted">正常</span>{% endif %}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="8" class="empty-row">暂无数据</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    </div>
+  <div class="card">
+    <div class="section-title" style="margin-top:0;">支出结构占比</div>
+    <div class="chart-wrap"><canvas id="expensePie"></canvas></div>
   </div>
-</section>
+</div>
+
+<div class="card" style="margin-top:1rem;">
+  <div class="section-title" style="margin-top:0;">未来资产趋势预测 (线性 + 复合增长)</div>
+  <div class="chart-wrap tall"><canvas id="forecastChart"></canvas></div>
+  <div id="forecastNotes" class="muted" style="font-size:.85rem;margin-top:.5rem;"></div>
+</div>
+
+<div class="card" style="margin-top:1rem;">
+  <div class="section-title" style="margin-top:0;">各项目历史趋势与建议</div>
+  <div id="itemTrends">
+    <div class="empty-state">加载中...</div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-  var SERIES = {{ series|tojson }};
-  (function () {
-    var c = document.getElementById("rangeChart");
-    if (c && window.Chart) {
-      new Chart(c, {
-        type: "line",
-        data: {
-          labels: SERIES.map(function (s) { return s.label; }),
-          datasets: [
-            { label: "收入", data: SERIES.map(function(s){return s.income;}), borderColor: "#16a34a", backgroundColor: "rgba(22,163,74,.1)", tension: .3 },
-            { label: "支出", data: SERIES.map(function(s){return s.expense;}), borderColor: "#dc2626", backgroundColor: "rgba(220,38,38,.1)", tension: .3 },
-            { label: "结余", data: SERIES.map(function(s){return s.balance;}), borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.1)", tension: .3 }
-          ]
-        },
-        options: { responsive: true, plugins: { legend: { position: "bottom" } }, scales: { y: { beginAtZero: true } } }
-      });
-    }
-  })();
+const YEAR_FROM = {{ year_from }};
+const MONTH_FROM = {{ month_from }};
+const YEAR_TO = {{ year_to }};
+const MONTH_TO = {{ month_to }};
+
+const COLORS = ["#2563eb","#16a34a","#dc2626","#d97706","#7c3aed",
+  "#0891b2","#db2777","#65a30d","#475569","#0ea5e9","#f59e0b","#10b981"];
+
+// fmtMoney 已在 app.js 中全局定义
+
+async function safeFetch(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  return res.json();
+}
+
+(async function(){
+  try {
+  // 1) 趋势图
+  const seriesData = await safeFetch(`/api/analysis/series?year_from=${YEAR_FROM}&month_from=${MONTH_FROM}&year_to=${YEAR_TO}&month_to=${MONTH_TO}`);
+  const series = seriesData.series || [];
+  new Chart(document.getElementById("trendChart"), {
+    type: "bar",
+    data: {
+      labels: series.map(s=>s.label),
+      datasets: [
+        { label:"收入", data: series.map(s=>s.income), backgroundColor:"#16a34a" },
+        { label:"支出", data: series.map(s=>s.expense), backgroundColor:"#dc2626" },
+        { type:"line", label:"净额", data: series.map(s=>s.net),
+          borderColor:"#2563eb", fill:false, tension:.3, borderWidth:2, pointRadius:2 }
+      ]
+    },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:"top"}},
+      scales:{y:{ticks:{callback:v=>fmtMoney(v)}}} }
+  });
+
+  // 2) 收入/支出结构
+  const trendsData = await safeFetch(`/api/analysis/trends?year_from=${YEAR_FROM}&year_to=${YEAR_TO}`);
+  const trends = trendsData.trends || [];
+
+  const incomeTrends = trends.filter(t=>t.item.category==="收入");
+  const expenseTrends = trends.filter(t=>t.item.category==="支出");
+
+  function makePie(canvasId, list){
+    new Chart(document.getElementById(canvasId), {
+      type:"doughnut",
+      data:{
+        labels: list.map(t=>t.item.name),
+        datasets:[{ data: list.map(t=>t.avg), backgroundColor:COLORS }]
+      },
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{position:"right",labels:{boxWidth:12,font:{size:10}}}} }
+    });
+  }
+  if(incomeTrends.length) makePie("incomePie", incomeTrends);
+  if(expenseTrends.length) makePie("expensePie", expenseTrends);
+
+  // 3) 未来资产预测
+  const fc = await safeFetch("/api/analysis/forecast?months=12");
+  if(fc.history && fc.history.length){
+    new Chart(document.getElementById("forecastChart"), {
+      type:"line",
+      data:{
+        labels: [...fc.history.map(h=>h.label), ...fc.forecast.map(f=>f.label)],
+        datasets:[
+          { label:"历史总资产", data:[...fc.history.map(h=>h.value), ...fc.forecast.map(()=>null)],
+            borderColor:"#16a34a", backgroundColor:"rgba(22,163,74,.1)", fill:true, tension:.3, borderWidth:2 },
+          { label:"线性预测", data:[...fc.history.map(()=>null), ...fc.forecast.map(f=>f.linear)],
+            borderColor:"#d97706", borderDash:[6,4], fill:false, tension:.3, borderWidth:2 },
+          { label:"复合增长", data:[...fc.history.map(()=>null), ...fc.forecast.map(f=>f.growth)],
+            borderColor:"#7c3aed", borderDash:[3,3], fill:false, tension:.3, borderWidth:2 }
+        ]
+      },
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{position:"top"}},
+        scales:{y:{ticks:{callback:v=>fmtMoney(v)}}} }
+    });
+    const notes = document.getElementById("forecastNotes");
+    notes.textContent = "";
+    const b1 = document.createElement("b"); b1.textContent = fmtMoney(fc.monthly_net);
+    const b2 = document.createElement("b"); b2.textContent = (fc.growth_rate ?? 0) + "%";
+    const b3 = document.createElement("b"); b3.textContent = fmtMoney(fc.slope);
+    notes.append("月均净额: ", b1, " 元 · 月增长率约 ", b2, " · 线性斜率 ", b3, " 元/月");
+  } else {
+    document.getElementById("forecastNotes").textContent = fc.note || "暂无数据";
+  }
+
+  // 4) 各项目历史趋势与建议
+  const container = document.getElementById("itemTrends");
+  if(!trends.length){
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "暂无条目数据";
+    container.textContent = "";
+    container.appendChild(empty);
+    return;
+  }
+  container.textContent = "";
+  const groups = { "收入": [], "支出": [], "结余": [], "其他": [] };
+  trends.forEach(t=>{ (groups[t.item.category] || (groups["其他"])).push(t); });
+  for(const cat of ["收入","支出","结余"]){
+    if(!groups[cat].length) continue;
+    const block = document.createElement("div");
+    const h3 = document.createElement("h3");
+    h3.className = "section-title";
+    h3.textContent = cat + " 类 (" + groups[cat].length + ")";
+    block.appendChild(h3);
+    const tbl = document.createElement("table");
+    const thead = tbl.createTHead();
+    const hr = thead.insertRow();
+    ["条目","归属","月均","趋势","斜率","建议"].forEach(h => {
+      const th = document.createElement("th");
+      if(h==="月均"||h==="斜率") th.className = "num";
+      th.textContent = h;
+      hr.appendChild(th);
+    });
+    const tb = tbl.createTBody();
+    groups[cat].forEach(t=>{
+      const tr = tb.insertRow();
+      const c1 = tr.insertCell(); c1.textContent = t.item.name || "";
+      const c2 = tr.insertCell(); c2.textContent = t.item.owner || "";
+      const c3 = tr.insertCell(); c3.className = "num"; c3.textContent = fmtMoney(t.avg);
+      const c4 = tr.insertCell(); c4.textContent = t.trend || "";
+      const c5 = tr.insertCell(); c5.className = "num"; c5.textContent = t.slope ?? "";
+      const c6 = tr.insertCell(); c6.textContent = t.advice || "";
+    });
+    block.appendChild(tbl);
+    container.appendChild(block);
+  }
+  } catch (err) {
+    console.error("分析数据加载失败:", err);
+    const container = document.getElementById("itemTrends");
+    container.textContent = "";
+    const msg = document.createElement("div");
+    msg.className = "empty-state";
+    msg.textContent = "数据加载失败, 请刷新重试";
+    container.appendChild(msg);
+  }
+})();
 </script>
 {% endblock %}

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}账户管理{% endblock %}
+
+{% block content %}
+<div class="action-row">
+  <h2 class="section-title" style="margin:0;border:none;padding:0;">账户管理</h2>
+  <span style="margin-left:auto;">
+    <a class="btn" href="{{ url_for('items.account_new') }}">+ 新增账户</a>
+    <a class="btn btn-secondary" href="{{ url_for('items.index') }}">返回条目</a>
+  </span>
+</div>
+
+{# 先按 大类 分组展示有归属的账户 #}
+{% set ns = namespace(cur='') %}
+{% set grouped = accounts | sort(attribute='group') %}
+{% for a in grouped if a.group %}
+  {% if a.group != ns.cur %}
+    {% set ns.cur = a.group %}
+    {% if not loop.first %}</tbody></table></div>{% endif %}
+    <div class="card" style="margin-bottom:1rem;">
+      <h3 class="section-title" style="margin:.25rem 0 .5rem;">{{ a.group }}</h3>
+      <table>
+        <thead>
+          <tr><th>账户</th><th>类型</th><th>归属</th><th>来源</th><th>排序</th><th>状态</th><th>操作</th></tr>
+        </thead>
+        <tbody>
+  {% endif %}
+  <tr>
+    <td>{{ a.name }}</td>
+    <td><span class="badge tag-balance">{{ a.type }}</span></td>
+    <td>{{ a.owner }}</td>
+    <td class="muted" style="font-size:.82rem;">{{ a.sheet or '—' }}</td>
+    <td>{{ a.sort_order }}</td>
+    <td>
+      {% if a.is_active %}<span class="badge tag-income">启用</span>{% else %}<span class="badge">禁用</span>{% endif %}
+    </td>
+    <td style="display:flex;gap:.4rem;align-items:center;">
+      <a class="btn btn-sm" href="{{ url_for('items.account_edit', acc_id=a.id) }}">编辑</a>
+      <form method="post" action="{{ url_for('items.account_delete', acc_id=a.id) }}"
+            onsubmit="return confirmDelete(this.id, '确认删除账户 {{ a.name }}?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-delete" title="删除">×</button>
+      </form>
+    </td>
+  </tr>
+{% endfor %}
+{% if grouped | selectattr('group') | list %}</tbody></table></div>{% endif %}
+
+{# 未归类 (无大类) 的账户 #}
+{% set ungrouped = grouped | rejectattr('group') | list %}
+{% if ungrouped %}
+<div class="card" style="margin-bottom:1rem;">
+  <h3 class="section-title" style="margin:.25rem 0 .5rem;">未归类账户</h3>
+  <table>
+    <thead>
+      <tr><th>账户</th><th>类型</th><th>归属</th><th>来源</th><th>排序</th><th>状态</th><th>操作</th></tr>
+    </thead>
+    <tbody>
+      {% for a in ungrouped %}
+      <tr>
+        <td>{{ a.name }}</td>
+        <td><span class="badge tag-balance">{{ a.type }}</span></td>
+        <td>{{ a.owner }}</td>
+        <td class="muted" style="font-size:.82rem;">{{ a.sheet or '—' }}</td>
+        <td>{{ a.sort_order }}</td>
+        <td>
+          {% if a.is_active %}<span class="badge tag-income">启用</span>{% else %}<span class="badge">禁用</span>{% endif %}
+        </td>
+        <td style="display:flex;gap:.4rem;align-items:center;">
+          <a class="btn btn-sm" href="{{ url_for('items.account_edit', acc_id=a.id) }}">编辑</a>
+          <form method="post" action="{{ url_for('items.account_delete', acc_id=a.id) }}"
+                onsubmit="return confirmDelete(this.id, '确认删除账户 {{ a.name }}?')">
+            <button type="submit" class="btn-delete" title="删除">×</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if not accounts %}
+<div class="card empty-state"><p>暂无账户</p></div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{% if account %}编辑账户{% else %}新增账户{% endif %}{% endblock %}
+
+{% block content %}
+<h2 class="section-title">{% if account %}编辑账户{% else %}新增账户{% endif %}</h2>
+<div class="card">
+  <form method="post" action="{% if account %}{{ url_for('items.account_edit', acc_id=account.id) }}{% else %}{{ url_for('items.account_new') }}{% endif %}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-row">
+      <label>账户名称 *</label>
+      <input type="text" name="name" required value="{{ account.name if account else '' }}" style="min-width:240px;">
+    </div>
+    <div class="form-row">
+      <label>类型</label>
+      <select name="type" id="acc-type">
+        {% for t in ['银行理财','股市理财','流动资金','信用','外债','其他'] %}
+        <option value="{{ t }}" {% if account and account.type == t %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-row">
+      <label>归属</label>
+      <input type="text" name="owner" id="acc-owner" value="{{ account.owner if account else '君军之家' }}">
+    </div>
+    <div class="form-row">
+      <label>大类 (侧边栏分组)</label>
+      <select name="group">
+        <option value="">— 自动按类型/归属推导 —</option>
+        {% for g in groups %}
+        <option value="{{ g }}" {% if account and account.group == g %}selected{% endif %}>{{ g }}</option>
+        {% endfor %}
+      </select>
+      <span class="muted" style="font-size:.78rem;">留空则: 流动资金+李→流动资金（李）, 银行理财→银行理财…</span>
+    </div>
+    <div class="form-row">
+      <label>来源工作表</label>
+      <select name="sheet">
+        <option value="">— 无 (独立账户) —</option>
+        {% for s in sheets %}
+        <option value="{{ s }}" {% if account and account.sheet == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      <span class="muted" style="font-size:.78rem;">选家庭结余, 该账户才会出现在侧边栏"家庭结余"大菜单下</span>
+    </div>
+    <div class="form-row">
+      <label>排序</label>
+      <input type="number" name="sort_order" value="{{ account.sort_order if account else 0 }}" style="width:100px;">
+    </div>
+    <div class="form-row">
+      <label>启用</label>
+      <input type="checkbox" name="is_active" {% if not account or account.is_active %}checked{% endif %}>
+    </div>
+    <div class="form-row">
+      <label>备注</label>
+      <input type="text" name="note" value="{{ account.note if account else '' }}" style="min-width:320px;">
+    </div>
+    <div class="form-row">
+      <button type="submit" class="btn">保存</button>
+      <a class="btn btn-secondary" href="{{ url_for('items.accounts') }}">取消</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

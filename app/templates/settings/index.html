@@ -1,310 +1,406 @@
 {% extends "base.html" %}
-{% block title %}系统配置{% endblock %}
-
-{% macro render_menu_tree(nodes, depth=0) %}
-{% for m in nodes %}
-<tr class="menu-row depth-{{ depth }}">
-  <td>{{ m.id }}</td>
-  <td>{{ '　' * depth }}{{ '├ ' if depth > 0 }}{{ m.name }}</td>
-  <td>{{ m.filter_type or '—' }}</td>
-  <td>{{ m.filter_owner or '—' }}</td>
-  <td>{{ m.sort_order }}</td>
-  <td>{{ '启用' if m.is_active else '停用' }}</td>
-  <td class="actions">
-    <details class="inline-edit"><summary class="btn btn-sm">编辑</summary>
-      <form method="post" action="{{ url_for('settings.menu_edit', menu_id=m.id) }}" class="edit-pop">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="text" name="name" value="{{ m.name }}" required>
-        <input type="text" name="filter_type" value="{{ m.filter_type }}" placeholder="筛选类型(如 收入)">
-        <input type="text" name="filter_owner" value="{{ m.filter_owner }}" placeholder="筛选属主(如 家庭)">
-        <input type="number" name="sort_order" value="{{ m.sort_order }}" style="width:5rem">
-        <label class="cb"><input type="checkbox" name="is_active" {{ 'checked' if m.is_active }}> 启用</label>
-        <button class="btn btn-sm btn-primary">保存</button>
-      </form>
-    </details>
-    <form method="post" action="{{ url_for('settings.menu_delete', menu_id=m.id) }}"
-          onsubmit="return confirm('删除菜单 {{ m.name }} 及其子菜单?')">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn btn-sm btn-danger">删除</button>
-    </form>
-  </td>
-</tr>
-{% if m.children %}
-{{ render_menu_tree(m.children, depth+1) }}
-{% endif %}
-{% endfor %}
-{% endmacro %}
+{% block title %}系统配置 · 后台{% endblock %}
 
 {% block content %}
-<h2 class="page-title">系统配置</h2>
+<h2 class="section-title">系统配置 · 后台管理</h2>
 
-<div class="settings-tabs">
-  <a href="#menus" class="stab">菜单管理</a>
-  <a href="#items" class="stab">账户条目</a>
-  <a href="#users" class="stab">用户管理</a>
-  <a href="#import-export" class="stab">导入导出</a>
-  <a href="#formula" class="stab">公式配置</a>
-  <a href="#locks" class="stab">并发锁</a>
-  <a href="#sysinfo" class="stab">系统信息</a>
+{# ==================== 数据导入与结构初始化 ==================== #}
+<div class="card">
+  <div class="section-title" style="margin-top:0;">
+    <span class="badge tag-income">数据导入与初始化</span>
+    <small class="muted" style="margin-left:.5rem;">从 Excel 导入历史数据 / 初始化左侧菜单结构</small>
+  </div>
+
+  <div class="grid grid-2">
+    <div>
+      <h4 style="margin:.5rem 0;">导入历史数据 (Excel)</h4>
+      <form method="post" enctype="multipart/form-data"
+            action="{{ url_for('settings.import_excel') }}"
+            style="margin-bottom:1rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="file" name="file" accept=".xlsx,.xls" required style="margin-bottom:.5rem;">
+        <label>去重策略:
+          <select name="strategy">
+            <option value="skip">跳过已存在 (默认)</option>
+            <option value="overwrite">覆盖已存在</option>
+          </select>
+        </label>
+        <button type="submit" class="btn btn-block" style="margin-top:.5rem;">导入 Excel</button>
+      </form>
+
+      <h4 style="margin:.5rem 0;">一键导入示例数据</h4>
+      <form method="post" action="{{ url_for('settings.import_sample') }}"
+            onsubmit="return confirm('一键导入示例 Excel 数据? 现有相同周期数据会被跳过。')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>去重策略:
+          <select name="strategy">
+            <option value="skip">跳过已存在</option>
+            <option value="overwrite">覆盖已存在</option>
+          </select>
+        </label>
+        <button type="submit" class="btn btn-secondary btn-block" style="margin-top:.5rem;">
+          导入示例数据 (家庭统计表2021~2026)
+        </button>
+      </form>
+    </div>
+
+    <div>
+      <h4 style="margin:.5rem 0;">初始化结构 (左侧菜单)</h4>
+      <p class="muted" style="font-size:.82rem;">从 Excel 初始化工作表登记 + 账户大类结构 (幂等操作)</p>
+      <form method="post" action="{{ url_for('settings.init_structure') }}"
+            onsubmit="return confirm('从示例 Excel 初始化结构? 已有结构会被补齐。')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-block" style="margin-top:.5rem;">
+          从示例 Excel 初始化结构
+        </button>
+      </form>
+      <form method="post" enctype="multipart/form-data"
+            action="{{ url_for('settings.init_structure') }}"
+            style="margin-top:.5rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="source" value="upload">
+        <input type="file" name="file" accept=".xlsx,.xls" required style="margin-bottom:.5rem;">
+        <button type="submit" class="btn btn-secondary btn-block">从上传 Excel 初始化结构</button>
+      </form>
+    </div>
+  </div>
+
+  {% if logs %}
+  <details style="margin-top:1rem;">
+    <summary class="section-title" style="cursor:pointer;font-size:.9rem;">导入历史日志 ({{ logs|length }})</summary>
+    <table style="margin-top:.5rem;">
+      <thead>
+        <tr><th>时间</th><th>来源</th><th>类型</th><th class="num">导入</th><th class="num">去重</th><th class="num">错误</th><th>策略</th></tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td>{{ log.imported_at.strftime('%Y-%m-%d %H:%M') if log.imported_at else '—' }}</td>
+          <td>{{ log.source_file }}</td>
+          <td><span class="badge">{{ log.kind }}</span></td>
+          <td class="num positive">{{ log.rows_imported }}</td>
+          <td class="num">{{ log.rows_skipped }}</td>
+          <td class="num negative">{{ log.rows_error }}</td>
+          <td>{{ log.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
 </div>
 
-{# ===================== 菜单管理 ===================== #}
-<section id="menus" class="card">
-  <div class="card-hd">菜单管理 <span class="muted">左侧菜单支持多层级; 筛选类型/属主决定点击后显示哪些条目</span></div>
-  <div class="card-body">
-    <form class="inline-form" method="post" action="{{ url_for('settings.menu_add') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="text" name="name" placeholder="菜单名称" required maxlength="64">
-      <input type="text" name="filter_type" placeholder="筛选类型(如 收入)" style="width:10rem">
-      <input type="text" name="filter_owner" placeholder="筛选属主(如 家庭)" style="width:10rem">
-      <input type="number" name="sort_order" value="0" style="width:4rem" title="排序">
-      <button class="btn btn-sm btn-primary">添加菜单</button>
-    </form>
-
-    <table class="data-table menu-table">
-      <thead><tr><th>#</th><th>名称</th><th>筛选类型</th><th>筛选属主</th><th>排序</th><th>状态</th><th>操作</th></tr></thead>
-      <tbody>
-      {{ render_menu_tree(menu_tree) }}
-      {% if not menu_tree %}
-      <tr><td colspan="7" class="empty-row">暂无菜单</td></tr>
-      {% endif %}
-      </tbody>
-    </table>
+{# ==================== 数据导出 ==================== #}
+<div class="card" style="margin-top:1rem;">
+  <div class="section-title" style="margin-top:0;">
+    <span class="badge tag-income">数据导出</span>
+    <small class="muted" style="margin-left:.5rem;">导出当前用户的数据 (JSON / Excel)</small>
   </div>
-</section>
+  <div class="action-row">
+    <a class="btn btn-sm" href="{{ url_for('settings.export_excel') }}">导出 Excel (全部)</a>
+    <a class="btn btn-sm btn-secondary" href="{{ url_for('settings.export_json') }}">导出 JSON (全部)</a>
+  </div>
+</div>
 
-{# ===================== 账户条目管理 ===================== #}
-<section id="items" class="card">
-  <div class="card-hd">账户条目 <span class="muted">名称+类型+属主 唯一; 每个字段均可编辑</span></div>
-  <div class="card-body">
-    <div class="grid-2col">
-      <form method="post" action="{{ url_for('settings.item_add') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <h4>单个新增</h4>
-        <div class="form-row"><label>名称</label><input type="text" name="name" required></div>
-        <div class="form-row"><label>类型</label>
-          <input type="text" name="type" list="type-list" value="支出" required>
-          <datalist id="type-list">{% for t in all_types %}<option value="{{ t }}">{% endfor %}<option value="收入"><option value="支出"><option value="结余"></datalist>
-        </div>
-        <div class="form-row"><label>属主</label><input type="text" name="owner" value="家庭"></div>
-        <div class="form-row"><label>备注</label><input type="text" name="note"></div>
-        <button class="btn btn-sm btn-primary">新增条目</button>
-      </form>
+{# ==================== 菜单管理 (Sheet 增减 / 改名) ==================== #}
+<div class="card" style="margin-top:1rem;">
+  <div class="section-title" style="margin-top:0;">
+    <span class="badge tag-balance">菜单管理</span>
+    <small class="muted" style="margin-left:.5rem;">左侧多级菜单树增减 / 改名 (结构公用, 所有用户共享)</small>
+  </div>
 
-      <form method="post" action="{{ url_for('settings.item_batch_add') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <h4>批量新增 <span class="muted">每行一条, 格式: 名称,类型,属主,备注</span></h4>
-        <textarea name="batch_text" rows="6" placeholder="工资,收入,家庭,月度工资&#10;餐饮,支出,家庭,日常饮食&#10;现金结余,结余,家庭,月末现金"></textarea>
-        <button class="btn btn-sm btn-primary">批量导入</button>
-      </form>
-    </div>
+  {# 新增菜单 #}
+  <form method="post" action="{{ url_for('settings.sheet_add') }}" class="form-row" style="margin-bottom:1rem;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="text" name="sheet_name" placeholder="菜单名称" required style="min-width:200px;">
+    <select name="sheet_kind" style="width:120px;">
+      <option value="entries">账单</option>
+      <option value="balances">结余</option>
+      <option value="other">其他</option>
+    </select>
+    <select name="parent_id" style="width:120px;">
+      <option value="">顶级菜单</option>
+      {% for s in all_sheets %}
+      <option value="{{ s.id }}">{{ '  ' * s.level }}{{ s.name }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-sm">新增菜单</button>
+  </form>
 
-    <table class="data-table">
-      <thead><tr><th>#</th><th>名称</th><th>类型</th><th>属主</th><th>备注</th><th>启用</th><th>操作</th></tr></thead>
-      <tbody>
-      {% for it in items %}
-      <tr class="{{ 'row-inactive' if not it.is_active }}">
-        <td>{{ it.id }}</td>
-        <td>{{ it.name }}</td>
-        <td><span class="chip">{{ it.type }}</span></td>
-        <td>{{ it.owner }}</td>
-        <td>{{ it.note or '' }}</td>
-        <td>{{ '启用' if it.is_active else '停用' }}</td>
-        <td class="actions">
-          <details class="inline-edit"><summary class="btn btn-sm">编辑</summary>
-            <form method="post" action="{{ url_for('settings.item_edit', item_id=it.id) }}" class="edit-pop">
+  {# 菜单树显示 #}
+  {% if menu_tree %}
+  <div class="menu-tree">
+    {% macro render_menu_tree(nodes, level=0) %}
+      {% for node in nodes %}
+      <div class="menu-node" style="margin-left: {{ level * 20 }}px;">
+        <div class="menu-node-content">
+          <span class="menu-name">{{ node.name }}</span>
+          <span class="menu-badge badge {% if node.kind == 'balances' %}tag-balance{% elif node.kind == 'entries' %}tag-income{% endif %}">{{ node.kind }}</span>
+          <span class="menu-level">L{{ node.level }}</span>
+          <span class="menu-status">{{ '显示' if node.is_active else '隐藏' }}</span>
+          <div class="menu-actions">
+            <form method="post" action="{{ url_for('settings.sheet_edit', sheet_id=node.id) }}" style="display:inline-flex;gap:.25rem;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <input type="text" name="name" value="{{ it.name }}" required>
-              <input type="text" name="type" value="{{ it.type }}" required>
-              <input type="text" name="owner" value="{{ it.owner }}" required>
-              <input type="text" name="note" value="{{ it.note or '' }}">
-              <label class="cb"><input type="checkbox" name="is_active" {{ 'checked' if it.is_active }}> 启用</label>
-              <input type="number" name="sort_order" value="{{ it.sort_order }}" style="width:5rem">
-              <button class="btn btn-sm btn-primary">保存</button>
+              <input type="text" name="sheet_name" value="{{ node.name }}" style="min-width:120px;">
+              <select name="sheet_kind" style="width:80px;">
+                <option value="entries" {% if node.kind == 'entries' %}selected{% endif %}>账单</option>
+                <option value="balances" {% if node.kind == 'balances' %}selected{% endif %}>结余</option>
+                <option value="other" {% if node.kind == 'other' %}selected{% endif %}>其他</option>
+              </select>
+              <select name="parent_id" style="width:100px;">
+                <option value="">顶级</option>
+                {% for s in all_sheets %}
+                {% if s.id != node.id %}  {# 排除自己 #}
+                <option value="{{ s.id }}" {% if node.parent_id == s.id %}selected{% endif %}>{{ '  ' * s.level }}{{ s.name }}</option>
+                {% endif %}
+                {% endfor %}
+              </select>
+              <button type="submit" class="btn btn-sm">保存</button>
             </form>
-          </details>
-          <form method="post" action="{{ url_for('settings.item_delete', item_id=it.id) }}"
-                onsubmit="return confirm('删除条目 {{ it.name }} 将级联删除其所有月度数据, 确认?')">
+            <form method="post" action="{{ url_for('settings.sheet_delete', sheet_id=node.id) }}" style="display:inline;"
+                  onsubmit="return confirm('删除菜单 {{ node.name }} 及其所有子菜单?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn-delete" title="删除">删除</button>
+            </form>
+          </div>
+        </div>
+        {% if node.children %}
+          {{ render_menu_tree(node.children, level + 1) }}
+        {% endif %}
+      </div>
+      {% endfor %}
+    {% endmacro %}
+    
+    {{ render_menu_tree(menu_tree) }}
+  </div>
+  {% else %}
+  <div class="empty-state"><p>暂无菜单, 可在上方添加或从 Excel 初始化</p></div>
+  {% endif %}
+</div>
+
+{# ==================== 账户管理 ==================== #}
+<div class="card" style="margin-top:1rem;">
+  <div class="section-title" style="margin-top:0;">
+    <span class="badge tag-expense">账户管理</span>
+    <small class="muted" style="margin-left:.5rem;">结余类账户 (结构公用, 所有用户共享)</small>
+  </div>
+  <div class="action-row" style="margin-bottom:.5rem;">
+    <a class="btn btn-sm" href="{{ url_for('items.account_new') }}">新增账户</a>
+  </div>
+  {% if accounts %}
+  <table>
+    <thead>
+      <tr><th>名称</th><th>类型</th><th>归属</th><th>大类</th><th>状态</th><th>操作</th></tr>
+    </thead>
+    <tbody>
+      {% for a in accounts %}
+      <tr>
+        <td>{{ a.name }}</td>
+        <td><span class="badge tag-balance">{{ a.type }}</span></td>
+        <td>{{ a.owner }}</td>
+        <td>{{ a.group or '—' }}</td>
+        <td>{{ '启用' if a.is_active else '禁用' }}</td>
+        <td>
+          <a class="btn btn-sm" href="{{ url_for('items.account_edit', acc_id=a.id) }}">编辑</a>
+          <form method="post" action="{{ url_for('items.account_delete', acc_id=a.id) }}" style="display:inline;"
+                onsubmit="return confirm('删除账户 {{ a.name }}?')">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-sm btn-danger">删除</button>
+            <button type="submit" class="btn-delete" title="删除">✕</button>
           </form>
         </td>
       </tr>
       {% endfor %}
-      </tbody>
-    </table>
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><p>暂无账户, 可在上方新增或从 Excel 初始化</p></div>
+  {% endif %}
+</div>
+
+{# ==================== 用户标识设置 ==================== #}
+<div class="card">
+  <div class="section-title" style="margin-top:0;">
+    <span class="badge">用户标识 · 数据隔离</span>
+    <small class="muted" style="margin-left:.5rem;">用户名即为数据归属 ID, 切换用户名即切换数据</small>
   </div>
-</section>
-
-{# ===================== 用户管理 ===================== #}
-<section id="users" class="card">
-  <div class="card-hd">用户管理 <span class="muted">点击切换见顶部下拉; 默认用户为打开页面时的默认身份</span></div>
-  <div class="card-body">
-    <form class="inline-form" method="post" action="{{ url_for('settings.user_add') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="text" name="name" placeholder="新用户名" required maxlength="32">
-      <label class="cb"><input type="checkbox" name="is_default"> 设为默认</label>
-      <button class="btn btn-sm btn-primary">添加用户</button>
-    </form>
-
-    <table class="data-table">
-      <thead><tr><th>ID</th><th>用户名</th><th>默认</th><th>排序</th><th>创建时间</th><th>操作</th></tr></thead>
-      <tbody>
-      {% for u in users %}
-      <tr class="{{ 'row-default' if u.is_default }}">
-        <td>{{ u.id }}</td>
-        <td>{{ u.name }}</td>
-        <td>{{ '✓ 默认' if u.is_default else '—' }}</td>
-        <td>{{ u.sort_order }}</td>
-        <td>{{ u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else '' }}</td>
-        <td class="actions">
-          {% if not u.is_default %}
-          <form method="post" action="{{ url_for('settings.user_set_default', user_id=u.id) }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-sm">设默认</button>
-          </form>
-          <a class="btn btn-sm" href="{{ request.path }}?uid={{ u.id }}">切换</a>
-          <form method="post" action="{{ url_for('settings.user_delete', user_id=u.id) }}"
-                onsubmit="return confirm('删除用户 {{ u.name }} 将清除其所有数据, 确认?')">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-sm btn-danger">删除</button>
-          </form>
-          {% endif %}
-        </td>
-      </tr>
-      {% else %}
-      <tr><td colspan="6" class="empty-row">暂无用户</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
+  <div class="form-row">
+    <label>当前用户:</label>
+    <code class="setting-code">{{ my_user_id or '未设置' }}</code>
   </div>
-</section>
+  <form method="post" action="{{ url_for('settings.update_profile') }}" class="form-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>切换用户名:</label>
+    <input type="text" name="user_label" value="{{ my_user_label }}"
+           placeholder="输入用户名 (如: 李 / 朱 / 君军)" required
+           style="min-width:220px;">
+    <button type="submit" class="btn btn-sm">切换</button>
+  </form>
+</div>
 
-{# ===================== 导入导出 ===================== #}
-<section id="import-export" class="card">
-  <div class="card-hd">导入导出 <span class="muted">模板下载 / CSV 导入 / JSON 全量导出导入</span></div>
-  <div class="card-body">
-    <div class="io-grid">
-      <div class="io-block">
-        <h4>模板下载</h4>
-        <p class="muted">下载 CSV 模板, 填写后批量导入条目</p>
-        <a class="btn btn-sm btn-primary" href="{{ url_for('settings.download_template') }}">下载模板</a>
+{# ==================== 并发锁配置 ==================== #}
+<div class="card" style="margin-top:1rem;">
+  <div class="section-title" style="margin-top:0;">
+    <span class="badge tag-balance">并发锁配置</span>
+    <small class="muted" style="margin-left:.5rem;">多页面同时编辑时自动加锁, 防止分支冲突</small>
+  </div>
+  <form method="post" action="{{ url_for('settings.update_lock_config') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="grid grid-2">
+      <div>
+        <div class="form-row">
+          <label>锁有效期 (秒):</label>
+          <input type="number" name="lock_ttl" value="{{ lock_config.ttl }}"
+                 min="10" max="3600" step="10" style="width:120px;">
+          <span class="muted">默认 180 (3分钟)</span>
+        </div>
+        <div class="form-row">
+          <label>心跳续期间隔 (秒):</label>
+          <input type="number" name="heartbeat_interval" value="{{ lock_config.heartbeat_interval }}"
+                 min="5" max="300" step="5" style="width:120px;">
+          <span class="muted">编辑中定期续期</span>
+        </div>
+        <div class="form-row">
+          <label>锁状态同步间隔 (秒):</label>
+          <input type="number" name="sync_interval" value="{{ lock_config.sync_interval }}"
+                 min="5" max="300" step="5" style="width:120px;">
+          <span class="muted">轮询他人锁状态</span>
+        </div>
       </div>
-
-      <div class="io-block">
-        <h4>CSV 导入条目</h4>
-        <form method="post" action="{{ url_for('settings.import_csv') }}" enctype="multipart/form-data">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="file" name="csv_file" accept=".csv" required>
-          <button class="btn btn-sm btn-primary">上传导入</button>
-        </form>
-      </div>
-
-      <div class="io-block">
-        <h4>JSON 导出 (全量)</h4>
-        <p class="muted">导出条目 + 菜单结构 + 用户 + 配置</p>
-        <a class="btn btn-sm" href="{{ url_for('settings.export_json') }}">导出 JSON</a>
-      </div>
-
-      <div class="io-block">
-        <h4>JSON 导入</h4>
-        <form method="post" action="{{ url_for('settings.import_json') }}" enctype="multipart/form-data">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="file" name="json_file" accept=".json" required>
-          <select name="import_mode">
-            <option value="merge">合并 (跳过已存在)</option>
-            <option value="replace">替换 (清空后导入)</option>
-          </select>
-          <button class="btn btn-sm btn-primary" onclick="return confirm('确认导入?')">导入</button>
-        </form>
+      <div>
+        <div class="config-switch-row">
+          <label class="switch-label">
+            <input type="checkbox" name="lock_enabled"
+                   {{ 'checked' if lock_config.enabled else '' }}>
+            <span class="switch-text">启用并发锁</span>
+          </label>
+          <p class="muted" style="font-size:.82rem;margin:.35rem 0 0;">
+            关闭后, 多人同时编辑不再加锁, 可能产生覆盖冲突
+          </p>
+        </div>
       </div>
     </div>
+    <div class="action-row" style="margin-top:.75rem;">
+      <button type="submit" class="btn btn-sm">保存锁配置</button>
+      <span class="muted">当前: {{ '已启用' if lock_config.enabled else '已禁用' }} · TTL={{ lock_config.ttl }}s</span>
+    </div>
+  </form>
+</div>
+
+{# ==================== 活跃锁管理 ==================== #}
+<div class="card" style="margin-top:1rem;">
+  <div class="section-title" style="margin-top:0;">
+    <span class="badge tag-expense">活跃锁管理</span>
+    <small class="muted" style="margin-left:.5rem;">
+      当前 {{ active_locks|length }} 个活跃锁 · 总计 {{ stats.active_locks }} 条记录
+    </small>
   </div>
-</section>
-
-{# ===================== 公式配置 ===================== #}
-<section id="formula" class="card">
-  <div class="card-hd">资产计算公式</div>
-  <div class="card-body">
-    <form method="post" action="{{ url_for('settings.update_formula') }}" class="inline-form">
+  <div class="action-row">
+    <form method="post" action="{{ url_for('settings.cleanup_expired_locks') }}" style="display:inline;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="text" name="formula" value="{{ formula }}" size="48">
-      <button class="btn btn-sm btn-primary">保存公式</button>
+      <button type="submit" class="btn btn-sm btn-secondary">清理过期锁</button>
     </form>
-    <p class="muted">默认: 上月结余+当月收入-当月结余=支出; 若支出条目合计≠公式结果, 差额计入"支出(其他)"</p>
+    <form method="post" action="{{ url_for('settings.force_release_all_locks') }}"
+          onsubmit="return confirm('将清空所有活跃锁, 确认?')"
+          style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="confirm" placeholder="输入'确认清空'"
+             style="width:140px;">
+      <button type="submit" class="btn btn-sm btn-danger">一键清空所有锁</button>
+    </form>
   </div>
-</section>
 
-{# ===================== 并发锁配置 + 管理 ===================== #}
-<section id="locks" class="card">
-  <div class="card-hd">并发锁 <span class="muted">条目级编辑锁, 超时自动释放</span></div>
-  <div class="card-body">
-    <form method="post" action="{{ url_for('settings.update_lock_config') }}" class="inline-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="cb"><input type="checkbox" name="lock_enabled" {{ 'checked' if lock_config.enabled }}> 启用并发锁</label>
-      <label>TTL(秒) <input type="number" name="lock_ttl" value="{{ lock_config.ttl }}" min="10" max="3600" style="width:5rem"></label>
-      <label>心跳(秒) <input type="number" name="heartbeat_interval" value="{{ lock_config.heartbeat_interval }}" style="width:5rem"></label>
-      <label>同步(秒) <input type="number" name="sync_interval" value="{{ lock_config.sync_interval }}" style="width:5rem"></label>
-      <button class="btn btn-sm btn-primary">保存锁配置</button>
-    </form>
-
-    <h4>活跃锁 ({{ active_locks|length }})</h4>
-    <table class="data-table">
-      <thead><tr><th>ID</th><th>资源</th><th>周期</th><th>持有者</th><th>剩余</th><th>操作</th></tr></thead>
-      <tbody>
+  {% if active_locks %}
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th><th>资源类型</th><th>资源ID</th><th>周期</th>
+        <th>持锁用户</th><th>获取时间</th><th class="num">剩余(秒)</th><th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
       {% for lk in active_locks %}
       <tr>
         <td>{{ lk.id }}</td>
-        <td>{{ lk.resource_type }}#{{ lk.resource_id }}</td>
+        <td><span class="badge {% if lk.resource_type == 'entry' %}tag-income{% else %}tag-balance{% endif %}">{{ lk.resource_type }}</span></td>
+        <td>{{ lk.resource_id }}</td>
         <td>{{ lk.period_key }}</td>
-        <td>{{ lk.user_label }}</td>
-        <td>{{ lk.remaining_seconds }}s</td>
+        <td>{{ lk.user_label }} <small class="muted">({{ lk.user_id }})</small></td>
+        <td>{{ lk.acquired_at.strftime('%H:%M:%S') if lk.acquired_at else '—' }}</td>
+        <td class="num {{ 'positive' if lk.remaining_seconds > 60 else 'negative' }}">
+          {{ lk.remaining_seconds }}
+        </td>
         <td>
-          <form method="post" action="{{ url_for('settings.force_release_lock', lock_id=lk.id) }}">
+          <form method="post" action="{{ url_for('settings.force_release_lock', lock_id=lk.id) }}"
+                onsubmit="return confirm('强制释放锁 #{{ lk.id }}?')"
+                style="display:inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-sm">强制释放</button>
+            <button type="submit" class="btn-delete" title="强制释放">✕</button>
           </form>
         </td>
       </tr>
-      {% else %}
-      <tr><td colspan="6" class="empty-row">无活跃锁</td></tr>
       {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><p>当前无活跃锁</p></div>
+  {% endif %}
+</div>
+
+{# ==================== 系统信息 ==================== #}
+<div class="grid grid-2" style="margin-top:1rem;">
+  <div class="card">
+    <div class="section-title" style="margin-top:0;"><span class="badge">数据库信息</span></div>
+    <table class="info-table">
+      <tr><td class="muted">数据库路径</td><td><code class="setting-code">{{ sys_info.db_path }}</code></td></tr>
+      <tr><td class="muted">文件大小</td><td>{{ sys_info.db_size_kb }} KB</td></tr>
+      <tr><td class="muted">文件存在</td><td>{{ '是' if sys_info.db_exists else '否' }}</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="section-title" style="margin-top:0;"><span class="badge">数据统计</span></div>
+    <table class="info-table">
+      <tr><td class="muted">条目模板</td><td class="num">{{ stats.items }}</td></tr>
+      <tr><td class="muted">月度记录</td><td class="num">{{ stats.entries }}</td></tr>
+      <tr><td class="muted">账户</td><td class="num">{{ stats.accounts }}</td></tr>
+      <tr><td class="muted">结余快照</td><td class="num">{{ stats.snapshots }}</td></tr>
+      <tr><td class="muted">导入日志</td><td class="num">{{ stats.import_logs }}</td></tr>
+      <tr><td class="muted">活跃锁</td><td class="num">{{ stats.active_locks }}</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="grid grid-2" style="margin-top:1rem;">
+  <div class="card">
+    <div class="section-title" style="margin-top:0;"><span class="badge">运行环境</span></div>
+    <table class="info-table">
+      <tr><td class="muted">应用版本</td><td>v{{ sys_info.app_version }}</td></tr>
+      <tr><td class="muted">Python</td><td>{{ sys_info.python }}</td></tr>
+      <tr><td class="muted">操作系统</td><td>{{ sys_info.platform }}</td></tr>
+      <tr><td class="muted">调试模式</td><td>{{ '开启' if sys_info.flask_debug else '关闭' }}</td></tr>
+      <tr><td class="muted">服务器时间</td><td>{{ sys_info.now }}</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="section-title" style="margin-top:0;"><span class="badge">全部配置项</span></div>
+    {% if all_settings %}
+    <table class="info-table">
+      <thead><tr><th>键</th><th>值</th><th>类型</th><th>更新时间</th></tr></thead>
+      <tbody>
+        {% for s in all_settings %}
+        <tr>
+          <td><code class="setting-code">{{ s.key }}</code></td>
+          <td>{{ s.value }}</td>
+          <td><small class="muted">{{ s.vtype }}</small></td>
+          <td><small class="muted">{{ s.updated_at.strftime('%m-%d %H:%M') if s.updated_at else '—' }}</small></td>
+        </tr>
+        {% endfor %}
       </tbody>
     </table>
-    <div class="actions-row">
-      <form method="post" action="{{ url_for('settings.cleanup_expired_locks') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button class="btn btn-sm">清理过期锁</button>
-      </form>
-      <form method="post" action="{{ url_for('settings.force_release_all_locks') }}"
-            onsubmit="return confirm('确认清空所有活跃锁?')">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="text" name="confirm" placeholder="输入 确认清空" style="width:9rem">
-        <button class="btn btn-sm btn-danger">一键清空</button>
-      </form>
-    </div>
+    {% else %}
+    <div class="empty-state"><p>暂无自定义配置项 (使用默认值)</p></div>
+    {% endif %}
   </div>
-</section>
-
-{# ===================== 系统信息 ===================== #}
-<section id="sysinfo" class="card">
-  <div class="card-hd">系统信息</div>
-  <div class="card-body">
-    <div class="stats-grid">
-      <div class="stat-card"><div class="stat-label">用户数</div><div class="stat-value">{{ stats.users }}</div></div>
-      <div class="stat-card"><div class="stat-label">条目数</div><div class="stat-value">{{ stats.items }}</div></div>
-      <div class="stat-card"><div class="stat-label">资产记录</div><div class="stat-value">{{ stats.assets }}</div></div>
-      <div class="stat-card"><div class="stat-label">活跃锁</div><div class="stat-value">{{ stats.active_locks }}</div></div>
-    </div>
-    <table class="kv-table">
-      <tr><td>应用版本</td><td>{{ sys_info.app_version }}</td></tr>
-      <tr><td>Python</td><td>{{ sys_info.python }}</td></tr>
-      <tr><td>平台</td><td>{{ sys_info.platform }}</td></tr>
-      <tr><td>调试模式</td><td>{{ '开启' if sys_info.flask_debug else '关闭' }}</td></tr>
-      <tr><td>数据库路径</td><td>{{ sys_info.db_path }}</td></tr>
-      <tr><td>数据库大小</td><td>{{ sys_info.db_size_kb }} KB</td></tr>
-      <tr><td>当前时间</td><td>{{ sys_info.now }}</td></tr>
-    </table>
-  </div>
-</section>
+</div>
 {% endblock %}
