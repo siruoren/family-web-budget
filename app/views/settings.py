@@ -670,3 +670,113 @@ def import_csv():
     db.session.commit()
     flash(f"CSV 导入: 新增 {added} 条, 跳过 {skipped} 条(已存在)", "success")
     return redirect(url_for("settings.index", uid=g.current_user.id) + "#import-export")
+
+
+# -------------------------------------------------------------- 历史数据导入 (CSV)
+@bp.route("/import/history", methods=["POST"])
+def import_history():
+    """从 CSV 批量导入历史月度数据 (Asset 价值)
+
+    CSV 表头(长表, 每行一条月度记录):
+        年份,月份,类型,属主,条目名称,金额,备注
+
+    逻辑:
+      1. 按 (名称+类型+属主) 找或创建 AccountItem (条目模板)
+      2. 按 (年+月+条目+当前用户) upsert Asset (月度记录)
+      - merge  : 已存在的 Asset 跳过 (不覆盖, 安全)
+      - upsert : 已存在的 Asset 用新值覆盖
+    """
+    file = request.files.get("history_file")
+    if not file or not file.filename:
+        flash("请选择 CSV 文件", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id) + "#import-export")
+    try:
+        raw = file.read().decode("utf-8-sig")
+        reader = csv.DictReader(io.StringIO(raw))
+    except Exception as e:
+        flash(f"CSV 解析失败: {e}", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id) + "#import-export")
+
+    uid = g.current_user.id
+    mode = request.form.get("import_mode", "merge")  # merge / upsert
+
+    added_items = added_assets = updated_assets = skipped = 0
+    max_order = db.session.execute(
+        select(func.max(AccountItem.sort_order))
+    ).scalar() or 0
+
+    for row in reader:
+        name = (row.get("条目名称") or row.get("name") or "").strip()
+        itype = (row.get("类型") or row.get("type") or "").strip()
+        owner = (row.get("属主") or row.get("owner") or "家庭").strip()
+        year_s = (row.get("年份") or row.get("year") or "").strip()
+        month_s = (row.get("月份") or row.get("month") or "").strip()
+        val_raw = (row.get("金额") or row.get("value") or "").strip()
+        note = (row.get("备注") or row.get("note") or "").strip()
+
+        if not name or not itype or not owner or not year_s or not month_s:
+            skipped += 1
+            continue
+        try:
+            year_i = int(year_s)
+            month_i = int(month_s)
+            if not (1 <= month_i <= 12):
+                skipped += 1
+                continue
+        except ValueError:
+            skipped += 1
+            continue
+        try:
+            val = float(val_raw)
+        except ValueError:
+            skipped += 1
+            continue
+
+        # 1. 找或创建 AccountItem (名称+类型+属主 唯一)
+        item = db.session.execute(
+            select(AccountItem).where(
+                AccountItem.name == name,
+                AccountItem.type == itype,
+                AccountItem.owner == owner,
+            )
+        ).scalars().first()
+        if not item:
+            max_order += 1
+            item = AccountItem(
+                name=name, type=itype, owner=owner, note="历史导入",
+                sort_order=max_order, is_active=True,
+            )
+            db.session.add(item)
+            db.session.flush()
+            added_items += 1
+
+        # 2. upsert Asset (年+月+条目+用户 唯一)
+        asset = db.session.execute(
+            select(Asset).where(
+                Asset.year == year_i, Asset.month == month_i,
+                Asset.account_item_id == item.id, Asset.user_id == uid,
+            )
+        ).scalars().first()
+        if asset:
+            if mode == "upsert":
+                asset.value = val
+                asset.note = note
+                asset.source = "import"
+                updated_assets += 1
+            else:
+                skipped += 1
+        else:
+            db.session.add(Asset(
+                year=year_i, month=month_i, account_item_id=item.id,
+                user_id=uid, value=val, note=note, source="import",
+            ))
+            added_assets += 1
+
+    db.session.commit()
+    flash(
+        f"历史数据导入完成: 新增条目 {added_items} 个, "
+        f"新增记录 {added_assets} 条, 更新 {updated_assets} 条"
+        f"{f', 跳过 {skipped} 条' if skipped else ''}",
+        "success",
+    )
+    return redirect(url_for("settings.index", uid=g.current_user.id) + "#import-export")

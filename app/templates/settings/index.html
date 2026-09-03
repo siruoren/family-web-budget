@@ -207,6 +207,20 @@
       </div>
 
       <div class="io-block">
+        <h4>历史数据导入 (CSV)</h4>
+        <p class="muted">导入历史月度收支; 表头: 年份,月份,类型,属主,条目名称,金额,备注</p>
+        <form method="post" action="{{ url_for('settings.import_history') }}" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="file" name="history_file" accept=".csv" required>
+          <select name="import_mode">
+            <option value="merge">合并 (跳过已存在)</option>
+            <option value="upsert">覆盖 (更新已存在)</option>
+          </select>
+          <button class="btn btn-sm btn-primary" onclick="return confirm('确认导入历史数据?')">上传导入</button>
+        </form>
+      </div>
+
+      <div class="io-block">
         <h4>JSON 导入</h4>
         <form method="post" action="{{ url_for('settings.import_json') }}" enctype="multipart/form-data">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
