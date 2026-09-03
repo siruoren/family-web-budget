@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}用户登录{% endblock %}
+
+{% block content %}
+<div class="auth-wrap">
+  <form class="auth-card" method="post" action="{{ url_for('auth.user_login', uid=user.id, next=next_url) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h2>用户登录</h2>
+    <p class="muted">用户 <b>{{ user.name }}</b> 已设置访问密码, 请输入以解锁数据</p>
+    <div class="form-row">
+      <label>密码</label>
+      <input type="password" name="password" required autofocus autocomplete="current-password">
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">解锁</button>
+      {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
+    </div>
+    <p class="muted">验证后解锁密钥以持久 Cookie 保存 30 天 (同一浏览器免再次输入)</p>
+  </form>
+</div>
+{% endblock %}

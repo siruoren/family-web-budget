@@ -50,6 +50,7 @@
         <option value="?uid={{ u.id }}" {{ 'selected' if current_user_id == u.id }}>{{ u.name }}</option>
         {% endfor %}
       </select>
+      <a class="btn btn-sm" href="{{ url_for('auth.logout') }}" title="锁定当前会话">🔒</a>
     </div>
     {% endif %}
   </nav>

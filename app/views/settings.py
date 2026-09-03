@@ -21,6 +21,7 @@ from ..services.locking import (
     list_all_locks, force_release, force_release_all, cleanup_expired,
 )
 from ..services.formula import get_formula, set_formula, get_all_types
+from ..services import auth
 
 bp = Blueprint("settings", __name__, url_prefix="/settings")
 
@@ -90,6 +91,7 @@ def index():
         users=users, items=items,
         menu_tree=menu_tree,
         formula=get_formula(), all_types=get_all_types(),
+        security={"admin_password_configured": auth.admin_password_configured()},
     )
 
 
@@ -132,8 +134,16 @@ def _flat_menu_list() -> list:
 @bp.route("/users/add", methods=["POST"])
 def user_add():
     name = request.form.get("name", "").strip()
+    password = request.form.get("password", "")
+    password2 = request.form.get("password2", "")
     if not name:
         flash("用户名不能为空", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id))
+    if len(password) < 4:
+        flash("密码至少 4 位", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id))
+    if password != password2:
+        flash("两次输入的密码不一致", "error")
         return redirect(url_for("settings.index", uid=g.current_user.id))
     existing = db.session.execute(
         select(User).where(User.name == name)
@@ -145,7 +155,10 @@ def user_add():
         select(func.max(User.sort_order))
     ).scalar() or 0
     is_default = request.form.get("is_default") == "on"
-    user = User(name=name, sort_order=max_order + 1, is_default=is_default)
+    user = User(
+        name=name, sort_order=max_order + 1, is_default=is_default,
+        password_hash=auth.hash_password(password),
+    )
     db.session.add(user)
     # 如果设为默认, 取消其他默认
     if is_default:
@@ -153,7 +166,31 @@ def user_add():
             {"is_default": False}
         )
     db.session.commit()
-    flash(f"已创建用户: {name}", "success")
+    flash(f"已创建用户: {name} (已配置访问密码)", "success")
+    return redirect(url_for("settings.index", uid=g.current_user.id))
+
+
+@bp.route("/users/<int:user_id>/password", methods=["POST"])
+def user_set_password(user_id):
+    """设置/修改用户访问密码 (创建用户时已配置, 此处用于改密或为旧用户补设)"""
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("用户不存在", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id))
+    password = request.form.get("password", "")
+    password2 = request.form.get("password2", "")
+    if len(password) < 4:
+        flash("密码至少 4 位", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id))
+    if password != password2:
+        flash("两次输入的密码不一致", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id))
+    user.password_hash = auth.hash_password(password)
+    db.session.commit()
+    # 若修改的是当前用户, 清除其解锁 cookie (下次访问需重新输入新密码)
+    if g.current_user.id == user_id:
+        auth.lock_user(user_id)
+    flash(f"已为用户 {user.name} 设置/更新访问密码", "success")
     return redirect(url_for("settings.index", uid=g.current_user.id))
 
 

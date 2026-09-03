@@ -232,3 +232,5 @@ config.local.yml
 .~家庭统计表2021年~20260501.xlsx
 budget_all-all.json
 **.xlsx
+scripts/test_security_e2e.py
+**/.DS_Store

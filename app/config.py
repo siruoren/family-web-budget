@@ -64,6 +64,15 @@ class Config:
         _yaml.get("security", {}).get("secret_key") or \
         "dev-secret-key-change-in-production"
 
+    # 安全配置段 (管理员密码 / 加密 pepper / 文件扩展名白名单)
+    # auth 与 crypto 服务从 SECURITY_CONFIG 读取 admin_password / encryption_pepper
+    SECURITY_CONFIG = {
+        "admin_password": os.environ.get("ADMIN_PASSWORD") or
+            _yaml.get("security", {}).get("admin_password", ""),
+        "encryption_pepper": os.environ.get("ENCRYPTION_PEPPER") or
+            _yaml.get("security", {}).get("encryption_pepper", ""),
+    }
+
     MAX_CONTENT_LENGTH = int(os.environ.get("MAX_CONTENT_LENGTH") or
                              _yaml.get("upload", {}).get("max_content_length", 50 * 1024 * 1024))
     UPLOAD_FOLDER = str(UPLOAD_DIR)

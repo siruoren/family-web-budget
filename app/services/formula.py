@@ -26,15 +26,22 @@ def set_formula(expr: str):
 
 def _sum_by_type(year: int, month: int, user_id: int,
                  item_type: str) -> float:
-    """汇总指定月份指定类型的所有条目值"""
-    q = select(func.sum(Asset.value)).join(
-        AccountItem, Asset.account_item_id == AccountItem.id
-    ).where(
-        Asset.year == year, Asset.month == month,
-        Asset.user_id == user_id,
-        AccountItem.type == item_type,
-    )
-    return float(db.session.execute(q).scalar() or 0)
+    """汇总指定月份指定类型的所有条目值 (应用层解密累加)
+
+    Asset.value 已加密存储, 无法用 SQL func.sum; 改为逐行解密累加。
+    """
+    rows = db.session.execute(
+        select(Asset.value_enc, AccountItem.type).join(
+            AccountItem, Asset.account_item_id == AccountItem.id
+        ).where(
+            Asset.year == year, Asset.month == month,
+            Asset.user_id == user_id,
+            AccountItem.type == item_type,
+        )
+    ).all()
+    from .crypto import decrypt_float, get_current_user_key
+    key = get_current_user_key()
+    return float(sum(decrypt_float(v, key) for (v, _t) in rows) or 0)
 
 
 def _prev_month(year: int, month: int) -> tuple[int, int]:

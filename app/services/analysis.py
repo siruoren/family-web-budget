@@ -11,6 +11,7 @@ from datetime import datetime
 from sqlalchemy import select, func, and_
 from .. import db
 from ..models import Asset, AccountItem, User
+from ..services.crypto import decrypt_float, get_current_user_key
 
 
 # -------------------------------------------------------------- 通用工具
@@ -115,21 +116,23 @@ def missing_items(year: int, month: int, user_id: int) -> list[dict]:
 
 # -------------------------------------------------------------- 区间时序
 def period_series(yf: int, mf: int, yt: int, mt: int, user_id: int) -> list[dict]:
-    """区间内每月: 各 type 合计"""
+    """区间内每月: 各 type 合计 (应用层解密累加)"""
     periods = _periods_range(yf, mf, yt, mt)
+    # 取区间内全部资产行 (year, month, type, value_enc), 逐行解密后分组
     q = select(
-        Asset.year, Asset.month, AccountItem.type,
-        func.sum(Asset.value)
+        Asset.year, Asset.month, AccountItem.type, Asset.value_enc
     ).join(
         AccountItem, Asset.account_item_id == AccountItem.id
     ).where(
         Asset.user_id == user_id,
-    ).group_by(Asset.year, Asset.month, AccountItem.type)
+    )
     rows = db.session.execute(q).all()
+    key = get_current_user_key()
 
     by_pcat: dict[tuple, float] = {}
-    for y, m, cat, val in rows:
-        by_pcat[(y, m, cat)] = float(val or 0)
+    for y, m, cat, enc in rows:
+        val = decrypt_float(enc, key)
+        by_pcat[(y, m, cat)] = by_pcat.get((y, m, cat), 0.0) + val
 
     out = []
     for y, m in periods:
@@ -152,18 +155,19 @@ def item_trend(item_id: int, yf: int, mf: int, yt: int, mt: int,
     item = db.session.get(AccountItem, item_id)
     if not item:
         return {}
-    q = select(Asset.year, Asset.month, Asset.value).where(
+    q = select(Asset.year, Asset.month, Asset.value_enc).where(
         Asset.account_item_id == item_id,
         Asset.user_id == user_id,
     ).order_by(Asset.year, Asset.month)
     rows = db.session.execute(q).all()
+    key = get_current_user_key()
 
     # 过滤到区间内
     periods = set(_periods_range(yf, mf, yt, mt))
     series = [
         {"year": y, "month": m, "label": f"{y}-{m:02d}",
-         "value": float(v or 0)}
-        for y, m, v in rows if (y, m) in periods
+         "value": decrypt_float(enc, key)}
+        for y, m, enc in rows if (y, m) in periods
     ]
 
     xs = [float(i) for i in range(len(series))]
@@ -209,22 +213,25 @@ def dashboard_overview(user_id: int, year: int = None,
     mf = pm + 1 if pm < 12 else 1
     series = period_series(yf, mf, year, month, user_id)
 
-    # 年度 Top 条目
+    # 年度 Top 条目 (应用层解密累加后排序取前 10)
     tq = select(
-        AccountItem.name, AccountItem.type, AccountItem.owner,
-        func.sum(Asset.value)
+        AccountItem.id, AccountItem.name, AccountItem.type,
+        AccountItem.owner, Asset.value_enc
     ).join(
         AccountItem, Asset.account_item_id == AccountItem.id
     ).where(
         Asset.year == year, Asset.user_id == user_id,
-    ).group_by(AccountItem.id).order_by(
-        func.sum(Asset.value).desc()
-    ).limit(10)
-    annual = db.session.execute(tq).all()
-    top_items = [
-        {"name": n, "type": t, "owner": o, "value": float(v or 0)}
-        for n, t, o, v in annual
-    ]
+    )
+    rows = db.session.execute(tq).all()
+    key = get_current_user_key()
+    sums: dict[int, dict] = {}
+    for item_id, name, itype, owner, enc in rows:
+        val = decrypt_float(enc, key)
+        slot = sums.setdefault(item_id, {
+            "name": name, "type": itype, "owner": owner, "value": 0.0,
+        })
+        slot["value"] += val
+    top_items = sorted(sums.values(), key=lambda x: x["value"], reverse=True)[:10]
 
     return {
         "year": year, "month": month,

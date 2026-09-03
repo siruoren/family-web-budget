@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}管理员登录{% endblock %}
+
+{% block content %}
+<div class="auth-wrap">
+  <form class="auth-card" method="post" action="{{ url_for('auth.admin_login', next=next_url) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h2>管理员登录</h2>
+    <p class="muted">进入系统管理需输入管理员密码 (由 config.yml 配置)</p>
+    <div class="form-row">
+      <label>管理员密码</label>
+      <input type="password" name="password" required autofocus autocomplete="current-password">
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">进入系统管理</button>
+      {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
+    </div>
+    <p class="muted">管理员解锁为会话级, 关闭浏览器后需重新输入</p>
+  </form>
+</div>
+{% endblock %}

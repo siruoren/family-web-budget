@@ -20,7 +20,13 @@ database:
   pool_recycle: 3600
 
 security:
-  secret_key: ""  # 留空则自动生成随机 key
+  secret_key: ""  # 留空则自动生成随机 key (生产环境务必设置固定值)
+  # 管理员密码: 进入"系统管理"页面时需输入此密码 (留空则不启用管理员门禁)
+  # 部署时在此设置, 应用启动后以哈希缓存于内存, 不会写入数据库
+  admin_password: ""
+  # 加密 pepper: 与用户密码一起 PBKDF2 派生每用户加密密钥 (留空则回退 SECRET_KEY)
+  # 修改此值会使已加密的历史数据无法解密, 请设置后保持不变
+  encryption_pepper: ""
   # 允许的文件扩展名
   allowed_extensions:
     - xlsx

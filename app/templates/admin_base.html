@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>{% block title %}系统管理{% endblock %} · 君军之家</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body class="admin-body">
+
+  {# ===== 系统管理顶栏 ===== #}
+  <nav class="admin-topbar">
+    <a class="brand" href="{{ url_for('settings.index') }}">⚙ 系统管理</a>
+    <span class="admin-user">
+      当前身份: <b>{{ current_user_name }}</b>
+      {% if admin_password_configured() %}
+        {% if is_admin_unlocked() %}<span class="badge badge-ok">已管理员解锁</span>{% else %}<span class="badge badge-danger">未解锁</span>{% endif %}
+      {% endif %}
+    </span>
+    <div class="admin-topbar-actions">
+      <a class="btn btn-sm" href="{{ url_for('dashboard.index') }}" title="返回主应用">← 返回主页</a>
+      <a class="btn btn-sm" href="{{ url_for('auth.logout') }}">锁定</a>
+    </div>
+  </nav>
+
+  <div class="admin-layout">
+    {# ===== 左侧分类菜单 ===== #}
+    <aside class="admin-sidebar">
+      <div class="admin-side-title">设置分类</div>
+      <nav class="admin-nav">
+        <a href="{{ url_for('settings.index') }}#users" class="anav">用户管理</a>
+        <a href="{{ url_for('settings.index') }}#menus" class="anav">菜单管理</a>
+        <a href="{{ url_for('settings.index') }}#items" class="anav">账户条目</a>
+        <a href="{{ url_for('settings.index') }}#import-export" class="anav">导入导出</a>
+        <a href="{{ url_for('settings.index') }}#formula" class="anav">公式配置</a>
+        <a href="{{ url_for('settings.index') }}#security" class="anav">安全设置</a>
+        <a href="{{ url_for('settings.index') }}#locks" class="anav">并发锁</a>
+        <a href="{{ url_for('settings.index') }}#sysinfo" class="anav">系统信息</a>
+      </nav>
+    </aside>
+
+    {# ===== 内容区 ===== #}
+    <main class="admin-content">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flashes">
+            {% for cat, msg in messages %}
+              <div class="flash flash-{{ cat }}">{{ msg }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+      {% block admin_content %}{% endblock %}
+    </main>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

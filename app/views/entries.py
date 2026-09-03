@@ -106,28 +106,32 @@ def _missing_for_scope(year, month, user_id, item_type, owner):
 
 
 def _item_stats(items, yf, mf, yt, mt, user_id):
-    """各条目近 12 月均值/合计/趋势"""
-    from sqlalchemy import func
+    """各条目区间均值/合计/趋势 (应用层解密累加)"""
+    from sqlalchemy import select
+    from ..services.crypto import decrypt_float, get_current_user_key
     if not items:
         return {}
     ids = [it.id for it in items]
     rows = db.session.execute(
-        select(
-            Asset.account_item_id,
-            func.sum(Asset.value),
-            func.avg(Asset.value),
-            func.count(Asset.id),
-        ).where(
+        select(Asset.account_item_id, Asset.value_enc).where(
             Asset.user_id == user_id,
             Asset.account_item_id.in_(ids),
-        ).group_by(Asset.account_item_id)
+        )
     ).all()
+    key = get_current_user_key()
+    agg: dict[int, dict] = {}
+    for item_id, enc in rows:
+        val = decrypt_float(enc, key)
+        s = agg.setdefault(item_id, {"sum": 0.0, "count": 0})
+        s["sum"] += val
+        s["count"] += 1
     out = {}
-    for item_id, total, avg, cnt in rows:
+    for item_id, s in agg.items():
+        cnt = s["count"] or 1
         out[item_id] = {
-            "sum": round(float(total or 0), 2),
-            "avg": round(float(avg or 0), 2),
-            "count": int(cnt or 0),
+            "sum": round(s["sum"], 2),
+            "avg": round(s["sum"] / cnt, 2),
+            "count": int(s["count"]),
         }
     return out
 

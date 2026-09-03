@@ -35,16 +35,18 @@ def create_app(config_name: str = "default") -> Flask:
     def _round(v, n=2):
         return round(float(v or 0), n)
 
-    # 注册蓝图 (Views) - v2 仅保留四块
+    # 注册蓝图 (Views) - v2 仅保留四块 + 认证
     from .views.dashboard import bp as dashboard_bp
     from .views.entries import bp as entries_bp
     from .views.analysis import bp as analysis_bp
     from .views.settings import bp as settings_bp
+    from .views.auth import bp as auth_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(entries_bp)
     app.register_blueprint(analysis_bp)
     app.register_blueprint(settings_bp)
+    app.register_blueprint(auth_bp)
 
     # 上下文: 注入用户 / 侧边栏 / 月份选择等通用变量
     from .services.context import inject_globals, ensure_user
@@ -59,10 +61,15 @@ def create_app(config_name: str = "default") -> Flask:
     def _ensure_user_hook():
         ensure_user()
 
-    # 建表 + 初始化默认账户条目模板 (不导入任何月度数据)
+    # 认证网关: 用户解锁 + /settings 管理员门禁 + 持久 cookie 写出
+    from .services.auth import init_auth
+    init_auth(app)
+
+    # 建表 + 轻量迁移 + 初始化默认账户条目模板 (不导入任何月度数据)
     with app.app_context():
         from . import models  # noqa: F401  确保模型被导入
         db.create_all()
+        models.ensure_schema()  # 为已存在的表补齐新增列 (password_hash / is_admin)
         _seed_defaults()
         _seed_menu()
 

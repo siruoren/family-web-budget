@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "admin_base.html" %}
 {% block title %}系统配置{% endblock %}
 
 {% macro render_menu_tree(nodes, depth=0) %}
@@ -35,18 +35,8 @@
 {% endfor %}
 {% endmacro %}
 
-{% block content %}
+{% block admin_content %}
 <h2 class="page-title">系统配置</h2>
-
-<div class="settings-tabs">
-  <a href="#menus" class="stab">菜单管理</a>
-  <a href="#items" class="stab">账户条目</a>
-  <a href="#users" class="stab">用户管理</a>
-  <a href="#import-export" class="stab">导入导出</a>
-  <a href="#formula" class="stab">公式配置</a>
-  <a href="#locks" class="stab">并发锁</a>
-  <a href="#sysinfo" class="stab">系统信息</a>
-</div>
 
 {# ===================== 菜单管理 ===================== #}
 <section id="menus" class="card">
@@ -138,26 +128,37 @@
 
 {# ===================== 用户管理 ===================== #}
 <section id="users" class="card">
-  <div class="card-hd">用户管理 <span class="muted">点击切换见顶部下拉; 默认用户为打开页面时的默认身份</span></div>
+  <div class="card-hd">用户管理 <span class="muted">点击切换见顶部下拉; 默认用户为打开页面时的默认身份; 创建用户需配置密码</span></div>
   <div class="card-body">
     <form class="inline-form" method="post" action="{{ url_for('settings.user_add') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="text" name="name" placeholder="新用户名" required maxlength="32">
+      <input type="password" name="password" placeholder="用户密码" required minlength="4" title="该用户访问数据时需输入此密码">
+      <input type="password" name="password2" placeholder="确认密码" required minlength="4">
       <label class="cb"><input type="checkbox" name="is_default"> 设为默认</label>
       <button class="btn btn-sm btn-primary">添加用户</button>
     </form>
 
     <table class="data-table">
-      <thead><tr><th>ID</th><th>用户名</th><th>默认</th><th>排序</th><th>创建时间</th><th>操作</th></tr></thead>
+      <thead><tr><th>ID</th><th>用户名</th><th>密码</th><th>默认</th><th>排序</th><th>创建时间</th><th>操作</th></tr></thead>
       <tbody>
       {% for u in users %}
       <tr class="{{ 'row-default' if u.is_default }}">
         <td>{{ u.id }}</td>
         <td>{{ u.name }}</td>
+        <td>{{ '已设置' if u.password_hash else '<span class="chip chip-warn">未设置</span>' }}</td>
         <td>{{ '✓ 默认' if u.is_default else '—' }}</td>
         <td>{{ u.sort_order }}</td>
         <td>{{ u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else '' }}</td>
         <td class="actions">
+          <details class="inline-edit"><summary class="btn btn-sm">设置密码</summary>
+            <form method="post" action="{{ url_for('settings.user_set_password', user_id=u.id) }}" class="edit-pop">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="password" name="password" placeholder="新密码" required minlength="4">
+              <input type="password" name="password2" placeholder="确认新密码" required minlength="4">
+              <button class="btn btn-sm btn-primary">保存</button>
+            </form>
+          </details>
           {% if not u.is_default %}
           <form method="post" action="{{ url_for('settings.user_set_default', user_id=u.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -173,7 +174,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="6" class="empty-row">暂无用户</td></tr>
+      <tr><td colspan="7" class="empty-row">暂无用户</td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -238,14 +239,120 @@
 
 {# ===================== 公式配置 ===================== #}
 <section id="formula" class="card">
-  <div class="card-hd">资产计算公式</div>
+  <div class="card-hd">资产计算公式 <span class="muted">点击输入框可选择账目类型; 手动输入的类型若在全部账目类型中不存在将提示有误</span></div>
   <div class="card-body">
-    <form method="post" action="{{ url_for('settings.update_formula') }}" class="inline-form">
+    <form method="post" action="{{ url_for('settings.update_formula') }}" class="formula-form" id="formula-form" onsubmit="return validateFormula()">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="text" name="formula" value="{{ formula }}" size="48">
+      <input type="text" name="formula" id="formula-input"
+             value="{{ formula }}" size="52" list="formula-type-list"
+             placeholder="如: 上月结余+当月收入-当月结余=支出" autocomplete="off">
+      <datalist id="formula-type-list">
+        {% for t in all_types %}<option value="{{ t }}">{% endfor %}
+      </datalist>
       <button class="btn btn-sm btn-primary">保存公式</button>
     </form>
+
+    <div class="formula-chips">
+      <span class="muted">类型:</span>
+      {% for t in all_types %}
+      <button type="button" class="chip chip-formula" data-insert="{{ t }}">{{ t }}</button>
+      {% endfor %}
+      <span class="muted" style="margin-left:1rem">前缀:</span>
+      <button type="button" class="chip chip-formula" data-insert="上月">上月</button>
+      <button type="button" class="chip chip-formula" data-insert="当月">当月</button>
+      <span class="muted" style="margin-left:1rem">运算:</span>
+      <button type="button" class="chip chip-formula" data-insert="+">+</button>
+      <button type="button" class="chip chip-formula" data-insert="-">-</button>
+      <button type="button" class="chip chip-formula" data-insert="=">=</button>
+    </div>
     <p class="muted">默认: 上月结余+当月收入-当月结余=支出; 若支出条目合计≠公式结果, 差额计入"支出(其他)"</p>
+  </div>
+</section>
+
+<script>
+// 全部账目类型 (供公式校验)
+window.ALL_TYPES = {{ all_types|tojson }};
+// 点击 chip 在光标处插入文本
+document.addEventListener("DOMContentLoaded", function () {
+  var input = document.getElementById("formula-input");
+  document.querySelectorAll(".chip-formula").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      if (!input) return;
+      var txt = btn.getAttribute("data-insert") || "";
+      var s = input.selectionStart || input.value.length;
+      var e = input.selectionEnd || s;
+      input.value = input.value.slice(0, s) + txt + input.value.slice(e);
+      var pos = s + txt.length;
+      input.focus();
+      try { input.setSelectionRange(pos, pos); } catch (err) {}
+    });
+  });
+});
+// 提交前校验: 公式中的"类型项"必须存在于全部账目类型
+function validateFormula() {
+  var input = document.getElementById("formula-input");
+  if (!input) return true;
+  var raw = input.value.trim();
+  if (!raw) { alert("公式不能为空"); return false; }
+  var types = window.ALL_TYPES || [];
+  // 拆分: 按运算符与空白切出中文连续串 (即"项目")
+  var tokens = raw.split(/[+\-=\s×÷*\/（）()]+/).filter(function (t) { return t.length > 0; });
+  var unknown = [];
+  for (var i = 0; i < tokens.length; i++) {
+    var tk = tokens[i];
+    // 纯数字跳过
+    if (/^\d+(\.\d+)?$/.test(tk)) continue;
+    // 已是账目类型
+    if (types.indexOf(tk) >= 0) continue;
+    // 复合项: 上月/当月 + 类型
+    var rest = null;
+    if (tk.indexOf("上月") === 0) rest = tk.slice(2);
+    else if (tk.indexOf("当月") === 0) rest = tk.slice(2);
+    if (rest !== null && rest.length > 0) {
+      if (types.indexOf(rest) >= 0) continue;
+    }
+    // 其余: 若不包含任何已知类型, 视为有误
+    var containsKnown = types.some(function (ty) { return tk.indexOf(ty) >= 0; });
+    if (!containsKnown) unknown.push(tk);
+  }
+  if (unknown.length) {
+    alert("输入有误: 公式中的项目 [" + unknown.join("、") + "] 不在全部账目类型中。\n当前账目类型: " + (types.join("、") || "(无)"));
+    return false;
+  }
+  return true;
+}
+</script>
+
+{# ===================== 安全设置 ===================== #}
+<section id="security" class="card">
+  <div class="card-hd">安全设置 <span class="muted">管理员门禁 / 用户密码 / 数据加密</span></div>
+  <div class="card-body">
+    <table class="kv-table">
+      <tr><td>管理员密码</td>
+        <td>
+          {% if security.admin_password_configured %}
+            <span class="badge badge-ok">已配置 (config.yml)</span>
+          {% else %}
+            <span class="badge badge-danger">未配置</span>
+            <span class="muted">在 config.yml 的 security.admin_password 设置后重启生效</span>
+          {% endif %}
+        </td></tr>
+      <tr><td>当前会话</td>
+        <td>
+          {% if security.admin_password_configured and not is_admin_unlocked() %}<span class="badge badge-danger">管理员未解锁</span>{% else %}<span class="badge badge-ok">已解锁</span>{% endif %}
+        </td></tr>
+      <tr><td>数据加密</td>
+        <td>
+          资产金额 / 备注以应用层混淆加密存储 (enc:v1: 前缀); 旧明文数据自动兼容读取
+        </td></tr>
+      <tr><td>用户解锁</td>
+        <td>首次输入用户密码后, 解锁密钥以持久 Cookie 保存 {{ 30 }} 天 (httpOnly)</td></tr>
+      <tr><td>当前用户密码</td>
+        <td>{{ '已设置' if current_user.password_hash else '未设置 (不门禁, 建议在用户管理中设置)' }}</td></tr>
+    </table>
+    <div class="actions-row">
+      <a class="btn btn-sm" href="{{ url_for('auth.logout') }}">锁定当前会话 (下次访问需重新验证)</a>
+    </div>
   </div>
 </section>
 

@@ -402,3 +402,82 @@ input:disabled.table-input { background: #f3f4f6; cursor: not-allowed; opacity: 
   .sidebar, .footer, .flash, .nav-links, .topbar-user-switch { display: none !important; }
   .main-content { width: 100% !important; }
 }
+
+/* =================================================================
+   系统管理 (独立界面) + 安全 + 公式增强
+   ================================================================= */
+/* ---------- 系统管理顶栏 ---------- */
+.admin-body { background: var(--bg); }
+.admin-topbar {
+  display: flex; align-items: center; gap: 1rem;
+  padding: .6rem 1.25rem;
+  background: #1e293b; color: #e2e8f0;
+  border-bottom: 2px solid var(--primary);
+}
+.admin-topbar .brand { color: #fff; font-weight: 700; font-size: 1.05rem; }
+.admin-topbar .admin-user { margin-left: auto; font-size: .82rem; color: #cbd5e1; }
+.admin-topbar .admin-topbar-actions { display: flex; gap: .5rem; }
+.admin-topbar .btn { background: #334155; color: #e2e8f0; border-color: #475569; }
+.admin-topbar .btn:hover { background: #475569; }
+
+/* ---------- 系统管理布局 ---------- */
+.admin-layout { display: flex; min-height: calc(100vh - 52px); }
+.admin-sidebar {
+  width: 200px; flex-shrink: 0;
+  background: #fff; border-right: 1px solid var(--border);
+  padding: 1rem .5rem;
+}
+.admin-side-title {
+  font-size: .72rem; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .08em; padding: 0 .6rem .5rem;
+}
+.admin-nav { display: flex; flex-direction: column; gap: 2px; }
+.admin-nav .anav {
+  display: block; padding: .5rem .75rem;
+  color: var(--text); border-radius: var(--radius);
+  font-size: .9rem; border-left: 3px solid transparent;
+}
+.admin-nav .anav:hover { background: var(--primary-soft); color: var(--primary); text-decoration: none; }
+.admin-content {
+  flex: 1; padding: 1.25rem 1.5rem; overflow: auto;
+  max-width: 100%;
+}
+
+/* ---------- 徽标 ---------- */
+.badge { display: inline-block; padding: .12rem .5rem; border-radius: 1rem; font-size: .72rem; }
+.badge-ok { background: var(--success-soft); color: var(--success); }
+.badge-danger { background: var(--danger-soft); color: var(--danger); }
+
+/* ---------- 登录页 ---------- */
+.auth-wrap {
+  display: flex; justify-content: center; align-items: flex-start;
+  padding: 4rem 1rem;
+}
+.auth-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-md);
+  padding: 1.75rem 2rem; width: 100%; max-width: 420px;
+}
+.auth-card h2 { margin: 0 0 .5rem; color: var(--primary); }
+.auth-card .form-row { margin: .75rem 0; }
+.auth-card .form-row label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: .25rem; }
+.auth-card .form-row input {
+  width: 100%; padding: .5rem .6rem; border: 1px solid var(--border);
+  border-radius: var(--radius); font-size: 1rem;
+}
+.auth-card .form-actions { display: flex; gap: .5rem; margin-top: 1rem; }
+
+/* ---------- 公式配置 ---------- */
+.formula-form { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.formula-chips {
+  display: flex; flex-wrap: wrap; gap: .35rem; align-items: center;
+  margin-top: .75rem; padding: .5rem 0;
+}
+.chip-formula {
+  background: var(--primary-soft); color: var(--primary);
+  border: 1px solid #bfdbfe; border-radius: 1rem;
+  padding: .2rem .6rem; font-size: .82rem; cursor: pointer;
+  transition: background .12s;
+}
+.chip-formula:hover { background: var(--primary); color: #fff; }
+#formula-input { font-family: ui-monospace, "Cascadia Code", Menlo, monospace; }
