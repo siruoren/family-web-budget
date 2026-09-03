@@ -1,55 +1,46 @@
-"""系统后台配置视图 - 独立配置页面
+"""系统配置视图 - 用户管理 / 账户条目管理 / 菜单管理 / 公式配置 / 锁管理 / 导入导出 / 系统信息
 
-功能模块:
-  1. 用户标识设置 (昵称 = 用户ID, 数据隔离)
-  2. 菜单管理 (Sheet 增减 / 改名)
-  3. 账户管理 (查看 / 编辑)
-  4. 数据导入与导出
-  5. 并发锁配置 (TTL / 开关 / 心跳间隔)
-  6. 活跃锁管理 (查看 / 强制释放)
-  7. 系统信息 (数据库 / 表行数 / 运行环境)
+v2 架构重构
 """
 import os
+import io
+import json
 import platform
-import sys
+import csv
 from datetime import datetime
 from flask import (
     Blueprint, render_template, request, redirect, url_for, jsonify,
-    session, flash, g, current_app,
+    session, flash, g, current_app, send_file,
 )
 from sqlalchemy import select, func
-from werkzeug.utils import secure_filename
 
 from .. import db
-from ..models import (
-    Item, Entry, Account, BalanceSnapshot, ImportLog, EditLock,
-    Sheet, SheetColumn,
-)
+from ..models import User, AccountItem, Asset, EditLock, Setting, MenuItem
 from ..services.locking import (
     get_setting, set_setting, get_lock_ttl, is_lock_enabled,
     list_all_locks, force_release, force_release_all, cleanup_expired,
 )
-from ..utils import allowed_file
+from ..services.formula import get_formula, set_formula, get_all_types
 
 bp = Blueprint("settings", __name__, url_prefix="/settings")
 
 
 def _app_version() -> str:
-    return getattr(current_app, "version", "1.0.0")
+    return getattr(current_app, "version", "2.0.0")
 
 
 @bp.route("/")
 def index():
     """系统配置首页"""
+    uid = g.current_user.id
+
     # ---- 系统信息 ----
     db_uri = current_app.config.get("SQLALCHEMY_DATABASE_URI", "")
     db_path = db_uri.replace("sqlite:///", "") if db_uri.startswith("sqlite") else db_uri
     stats = {
-        "items": db.session.query(func.count(Item.id)).scalar() or 0,
-        "entries": db.session.query(func.count(Entry.id)).scalar() or 0,
-        "accounts": db.session.query(func.count(Account.id)).scalar() or 0,
-        "snapshots": db.session.query(func.count(BalanceSnapshot.id)).scalar() or 0,
-        "import_logs": db.session.query(func.count(ImportLog.id)).scalar() or 0,
+        "users": db.session.query(func.count(User.id)).scalar() or 0,
+        "items": db.session.query(func.count(AccountItem.id)).scalar() or 0,
+        "assets": db.session.query(func.count(Asset.id)).scalar() or 0,
         "active_locks": db.session.query(func.count(EditLock.id)).scalar() or 0,
     }
     sys_info = {
@@ -63,6 +54,16 @@ def index():
         "now": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
 
+    # ---- 用户列表 ----
+    users = db.session.execute(
+        select(User).order_by(User.sort_order, User.id)
+    ).scalars().all()
+
+    # ---- 账户条目列表 ----
+    items = db.session.execute(
+        select(AccountItem).order_by(AccountItem.type, AccountItem.sort_order, AccountItem.id)
+    ).scalars().all()
+
     # ---- 锁配置 ----
     lock_config = {
         "enabled": is_lock_enabled(),
@@ -71,425 +72,601 @@ def index():
         "sync_interval": get_setting("sync_interval", 30),
     }
 
-    # ---- 活跃锁列表 ----
+    # ---- 活跃锁 ----
     active_locks = list_all_locks()
 
-    # ---- 全部配置项 (键值表) ----
-    from ..models import Setting
+    # ---- 全部配置项 ----
     all_settings = db.session.execute(
         select(Setting).order_by(Setting.key)
     ).scalars().all()
 
-    # ---- 导入日志 ----
-    logs = db.session.execute(
-        select(ImportLog).order_by(ImportLog.imported_at.desc()).limit(10)
-    ).scalars().all()
-
-    # ---- 菜单管理: 所有 Sheet (按层级排序) ----
-    sheets = db.session.execute(
-        select(Sheet).order_by(Sheet.level, Sheet.sort_order, Sheet.id)
-    ).scalars().all()
-    
-    # 构建菜单树结构供前端显示
-    def build_menu_tree(parent_id=None):
-        """递归构建菜单树"""
-        children = db.session.execute(
-            select(Sheet).where(
-                Sheet.parent_id == parent_id if parent_id is not None else Sheet.parent_id.is_(None)
-            ).order_by(Sheet.sort_order, Sheet.id)
-        ).scalars().all()
-        
-        result = []
-        for sheet in children:
-            node = {
-                'id': sheet.id,
-                'name': sheet.name,
-                'kind': sheet.kind,
-                'level': sheet.level,
-                'is_active': sheet.is_active,
-                'sort_order': sheet.sort_order,
-                'children': build_menu_tree(sheet.id)
-            }
-            result.append(node)
-        return result
-    
-    menu_tree = build_menu_tree()
-    
-    # 获取所有菜单供父菜单选择 (排除自己)
-    def get_all_sheets_flat():
-        """获取所有菜单的扁平列表"""
-        return db.session.execute(
-            select(Sheet).order_by(Sheet.level, Sheet.sort_order, Sheet.id)
-        ).scalars().all()
-    
-    all_sheets = get_all_sheets_flat()
-
-    # ---- 账户管理: 所有账户 ----
-    accounts = db.session.execute(
-        select(Account).order_by(Account.sort_order, Account.id)
-    ).scalars().all()
+    # ---- 菜单树 ----
+    menu_tree = _build_menu_tree()
 
     return render_template(
         "settings/index.html",
         stats=stats, sys_info=sys_info, lock_config=lock_config,
         active_locks=active_locks, all_settings=all_settings,
-        my_user_id=g.user_id, my_user_label=session.get("user_label", ""),
-        logs=logs, sheets=sheets, accounts=accounts,
-        menu_tree=menu_tree, all_sheets=all_sheets,
+        users=users, items=items,
+        menu_tree=menu_tree,
+        formula=get_formula(), all_types=get_all_types(),
     )
 
 
-# -------------------------------------------------------------- 用户名设置 (首次弹窗)
-@bp.route("/username", methods=["POST"])
-def set_username():
-    """首次进入设置用户名 (弹窗表单) — 用户名即为 user_id, 数据按此隔离"""
-    label = request.form.get("user_label", "").strip()
-    if not label:
+def _build_menu_tree() -> list:
+    """构建菜单树 (供管理界面展示)"""
+    roots = db.session.execute(
+        select(MenuItem).where(
+            MenuItem.parent_id.is_(None)
+        ).order_by(MenuItem.sort_order, MenuItem.id)
+    ).scalars().all()
+
+    def _node(m):
+        children = db.session.execute(
+            select(MenuItem).where(
+                MenuItem.parent_id == m.id
+            ).order_by(MenuItem.sort_order, MenuItem.id)
+        ).scalars().all()
+        return {
+            "id": m.id, "name": m.name, "sort_order": m.sort_order,
+            "is_active": m.is_active,
+            "filter_type": m.filter_type or "",
+            "filter_owner": m.filter_owner or "",
+            "parent_id": m.parent_id,
+            "children": [_node(c) for c in children],
+        }
+
+    return [_node(r) for r in roots]
+
+
+def _flat_menu_list() -> list:
+    """扁平化菜单列表 (供下拉选择父菜单)"""
+    all_items = db.session.execute(
+        select(MenuItem).order_by(MenuItem.sort_order, MenuItem.id)
+    ).scalars().all()
+    return [{"id": m.id, "name": m.name, "parent_id": m.parent_id,
+             "sort_order": m.sort_order} for m in all_items]
+
+
+# -------------------------------------------------------------- 用户管理
+@bp.route("/users/add", methods=["POST"])
+def user_add():
+    name = request.form.get("name", "").strip()
+    if not name:
         flash("用户名不能为空", "error")
-        return redirect(request.referrer or url_for("dashboard.index"))
-    if len(label) > 32:
-        flash("用户名过长 (最多 32 字符)", "error")
-        return redirect(request.referrer or url_for("dashboard.index"))
-    session["user_id"] = label
-    session["user_label"] = label
-    g.user_id = label
-    g.user_label = label
-    flash(f"欢迎, {label}!", "success")
-    return redirect(request.referrer or url_for("dashboard.index"))
+        return redirect(url_for("settings.index", uid=g.current_user.id))
+    existing = db.session.execute(
+        select(User).where(User.name == name)
+    ).scalars().first()
+    if existing:
+        flash(f"用户 '{name}' 已存在", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id))
+    max_order = db.session.execute(
+        select(func.max(User.sort_order))
+    ).scalar() or 0
+    is_default = request.form.get("is_default") == "on"
+    user = User(name=name, sort_order=max_order + 1, is_default=is_default)
+    db.session.add(user)
+    # 如果设为默认, 取消其他默认
+    if is_default:
+        db.session.query(User).filter(User.id != user.id).update(
+            {"is_default": False}
+        )
+    db.session.commit()
+    flash(f"已创建用户: {name}", "success")
+    return redirect(url_for("settings.index", uid=g.current_user.id))
 
 
-# -------------------------------------------------------------- 用户昵称
-@bp.route("/profile", methods=["POST"])
-def update_profile():
-    """修改当前用户名 (user_id 同步变更, 实现用户切换)"""
-    label = request.form.get("user_label", "").strip()
-    if not label:
-        flash("用户名不能为空", "error")
-        return redirect(url_for("settings.index"))
-    if len(label) > 32:
-        flash("用户名过长 (最多 32 字符)", "error")
-        return redirect(url_for("settings.index"))
-    session["user_id"] = label
-    session["user_label"] = label
-    g.user_id = label
-    g.user_label = label
-    flash(f"已切换到用户: {label}", "success")
-    return redirect(url_for("settings.index"))
+@bp.route("/users/<int:user_id>/default", methods=["POST"])
+def user_set_default(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("用户不存在", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id))
+    db.session.query(User).update({"is_default": False})
+    user.is_default = True
+    db.session.commit()
+    flash(f"已设置默认用户: {user.name}", "success")
+    return redirect(url_for("settings.index", uid=g.current_user.id))
 
 
-# -------------------------------------------------------------- 数据导入与初始化
-@bp.route("/import/excel", methods=["POST"])
-def import_excel():
-    """从系统配置页导入 Excel"""
-    f = request.files.get("file")
-    if not f or not f.filename or not allowed_file(f.filename):
-        flash("请选择有效的 Excel 文件 (.xlsx/.xls)", "error")
-        return redirect(url_for("settings.index"))
-    fname = secure_filename(f.filename) or "upload.xlsx"
-    upload_dir = current_app.config.get("UPLOAD_FOLDER", "uploads")
-    os.makedirs(upload_dir, exist_ok=True)
-    fpath = os.path.join(upload_dir, fname)
-    f.save(fpath)
-    strategy = request.form.get("strategy", "skip")
-    from ..services.importer import import_excel as _do_import
-    result = _do_import(fpath, strategy=strategy, user_id=g.user_id)
-    flash(
-        f"导入完成: {result.get('imported', 0)} 条导入, "
-        f"{result.get('skipped', 0)} 条跳过, "
-        f"{result.get('errors', 0)} 条错误",
-        "success" if result.get("errors", 0) == 0 else "warning",
-    )
-    return redirect(url_for("settings.index"))
+@bp.route("/users/<int:user_id>/delete", methods=["POST"])
+def user_delete(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("用户不存在", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id))
+    if user.is_default:
+        flash("不能删除默认用户, 请先设置其他用户为默认", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id))
+    name = user.name
+    db.session.delete(user)
+    db.session.commit()
+    flash(f"已删除用户: {name} (及其所有数据)", "success")
+    return redirect(url_for("settings.index", uid=g.current_user.id))
 
 
-@bp.route("/import/sample", methods=["POST"])
-def import_sample():
-    """从系统配置页一键导入示例数据"""
-    strategy = request.form.get("strategy", "skip")
-    sample = current_app.config.get("SAMPLE_EXCEL")
-    if not sample or not os.path.exists(str(sample)):
-        flash("示例 Excel 文件不存在", "error")
-        return redirect(url_for("settings.index"))
-    from ..services.importer import import_excel as _do_import
-    result = _do_import(str(sample), strategy=strategy, user_id=g.user_id)
-    flash(
-        f"示例数据导入完成: {result.get('imported', 0)} 条导入, "
-        f"{result.get('skipped', 0)} 条跳过",
-        "success",
-    )
-    return redirect(url_for("settings.index"))
+# -------------------------------------------------------------- 账户条目管理
+@bp.route("/items/add", methods=["POST"])
+def item_add():
+    """单个新增条目"""
+    name = request.form.get("name", "").strip()
+    item_type = request.form.get("type", "").strip()
+    owner = request.form.get("owner", "家庭").strip()
+    note = request.form.get("note", "").strip()
+    if not name or not item_type:
+        flash("名称和类型不能为空", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id))
+    existing = db.session.execute(
+        select(AccountItem).where(
+            AccountItem.name == name,
+            AccountItem.type == item_type,
+            AccountItem.owner == owner,
+        )
+    ).scalars().first()
+    if existing:
+        flash(f"条目已存在: {item_type}/{owner}/{name}", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id))
+    max_order = db.session.execute(
+        select(func.max(AccountItem.sort_order))
+    ).scalar() or 0
+    db.session.add(AccountItem(
+        name=name, type=item_type, owner=owner, note=note,
+        sort_order=max_order + 1,
+    ))
+    db.session.commit()
+    flash(f"已新增条目: {item_type}/{owner}/{name}", "success")
+    return redirect(url_for("settings.index", uid=g.current_user.id))
 
 
-@bp.route("/init-structure", methods=["POST"])
-def init_structure():
-    """从系统配置页初始化结构 (左侧菜单)"""
-    source = request.form.get("source", "sample")
-    if source == "upload":
-        f = request.files.get("file")
-        if not f or not f.filename or not allowed_file(f.filename):
-            flash("请上传有效的 Excel 文件", "error")
-            return redirect(url_for("settings.index"))
-        fname = secure_filename(f.filename) or "init.xlsx"
-        upload_dir = current_app.config.get("UPLOAD_FOLDER", "uploads")
-        os.makedirs(upload_dir, exist_ok=True)
-        fpath = os.path.join(upload_dir, fname)
-        f.save(fpath)
-    else:
-        fpath = str(current_app.config.get("SAMPLE_EXCEL"))
-        if not os.path.exists(fpath):
-            flash("示例 Excel 文件不存在", "error")
-            return redirect(url_for("settings.index"))
-    from ..services.structure import initialize_structure_from_excel
-    initialize_structure_from_excel(fpath)
-    flash("结构初始化完成 (幂等, 已补齐缺失项)", "success")
-    return redirect(url_for("settings.index"))
+@bp.route("/items/batch-add", methods=["POST"])
+def item_batch_add():
+    """批量新增条目 - 每行一条, 格式: 名称,类型,属主,备注"""
+    raw = request.form.get("batch_text", "").strip()
+    if not raw:
+        flash("批量内容不能为空", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id))
+    lines = raw.split("\n")
+    added = 0
+    skipped = 0
+    max_order = db.session.execute(
+        select(func.max(AccountItem.sort_order))
+    ).scalar() or 0
+    for line in lines:
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) < 2:
+            continue
+        name = parts[0]
+        item_type = parts[1]
+        owner = parts[2] if len(parts) > 2 else "家庭"
+        note = parts[3] if len(parts) > 3 else ""
+        if not name or not item_type:
+            continue
+        existing = db.session.execute(
+            select(AccountItem).where(
+                AccountItem.name == name,
+                AccountItem.type == item_type,
+                AccountItem.owner == owner,
+            )
+        ).scalars().first()
+        if existing:
+            skipped += 1
+            continue
+        max_order += 1
+        db.session.add(AccountItem(
+            name=name, type=item_type, owner=owner, note=note,
+            sort_order=max_order,
+        ))
+        added += 1
+    db.session.commit()
+    flash(f"批量新增: {added} 条新增, {skipped} 条跳过(已存在)", "success")
+    return redirect(url_for("settings.index", uid=g.current_user.id))
+
+
+@bp.route("/items/<int:item_id>/edit", methods=["POST"])
+def item_edit(item_id):
+    """编辑条目 (每个字段都可以调整)"""
+    item = db.session.get(AccountItem, item_id)
+    if not item:
+        flash("条目不存在", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id))
+    name = request.form.get("name", "").strip()
+    item_type = request.form.get("type", "").strip()
+    owner = request.form.get("owner", "").strip()
+    note = request.form.get("note", "").strip()
+    is_active = request.form.get("is_active") == "on"
+    sort_order = request.form.get("sort_order", item.sort_order, type=int)
+    if not name or not item_type or not owner:
+        flash("名称、类型、属主不能为空", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id))
+    # 检查唯一约束
+    if name != item.name or item_type != item.type or owner != item.owner:
+        existing = db.session.execute(
+            select(AccountItem).where(
+                AccountItem.name == name,
+                AccountItem.type == item_type,
+                AccountItem.owner == owner,
+                AccountItem.id != item_id,
+            )
+        ).scalars().first()
+        if existing:
+            flash(f"已存在相同条目: {item_type}/{owner}/{name}", "error")
+            return redirect(url_for("settings.index", uid=g.current_user.id))
+    item.name = name
+    item.type = item_type
+    item.owner = owner
+    item.note = note
+    item.is_active = is_active
+    item.sort_order = sort_order
+    db.session.commit()
+    flash(f"已更新条目: {item_type}/{owner}/{name}", "success")
+    return redirect(url_for("settings.index", uid=g.current_user.id))
+
+
+@bp.route("/items/<int:item_id>/delete", methods=["POST"])
+def item_delete(item_id):
+    """删除条目 (级联删除 Asset)"""
+    item = db.session.get(AccountItem, item_id)
+    if not item:
+        flash("条目不存在", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id))
+    name = f"{item.type}/{item.owner}/{item.name}"
+    db.session.delete(item)
+    db.session.commit()
+    flash(f"已删除条目: {name}", "success")
+    return redirect(url_for("settings.index", uid=g.current_user.id))
+
+
+# -------------------------------------------------------------- 公式配置
+@bp.route("/formula", methods=["POST"])
+def update_formula():
+    """更新资产计算公式"""
+    expr = request.form.get("formula", "").strip()
+    if not expr:
+        flash("公式不能为空", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id))
+    set_formula(expr)
+    flash(f"公式已更新: {expr}", "success")
+    return redirect(url_for("settings.index", uid=g.current_user.id))
 
 
 # -------------------------------------------------------------- 锁配置
 @bp.route("/lock-config", methods=["POST"])
 def update_lock_config():
-    """更新并发锁配置 (持久化到 setting 表)"""
     ttl = request.form.get("lock_ttl", "180").strip()
     enabled = request.form.get("lock_enabled") == "on"
     heartbeat = request.form.get("heartbeat_interval", "60").strip()
     sync_iv = request.form.get("sync_interval", "30").strip()
-
     try:
         ttl_val = int(ttl)
         if ttl_val < 10 or ttl_val > 3600:
             flash("锁 TTL 需在 10~3600 秒之间", "error")
-            return redirect(url_for("settings.index"))
+            return redirect(url_for("settings.index", uid=g.current_user.id))
     except ValueError:
         flash("锁 TTL 必须是整数", "error")
-        return redirect(url_for("settings.index"))
-
+        return redirect(url_for("settings.index", uid=g.current_user.id))
     try:
         hb_val = max(5, int(heartbeat))
         sync_val = max(5, int(sync_iv))
     except ValueError:
         hb_val, sync_val = 60, 30
-
     set_setting("lock_enabled", "1" if enabled else "0", "bool")
     set_setting("lock_ttl", ttl_val, "int")
     set_setting("heartbeat_interval", hb_val, "int")
     set_setting("sync_interval", sync_val, "int")
-
     flash(
         f"并发锁配置已更新: TTL={ttl_val}s, "
-        f"{'启用' if enabled else '已禁用'}, 心跳={hb_val}s, 同步={sync_val}s",
+        f"{'启用' if enabled else '已禁用'}",
         "success",
     )
-    return redirect(url_for("settings.index"))
+    return redirect(url_for("settings.index", uid=g.current_user.id))
 
 
 # -------------------------------------------------------------- 锁管理
 @bp.route("/locks/force-release/<int:lock_id>", methods=["POST"])
 def force_release_lock(lock_id):
-    """强制释放单个锁"""
     ok = force_release(lock_id)
     if ok:
         flash(f"已强制释放锁 #{lock_id}", "success")
     else:
         flash(f"锁 #{lock_id} 不存在或已释放", "warning")
-    return redirect(url_for("settings.index"))
+    return redirect(url_for("settings.index", uid=g.current_user.id))
 
 
 @bp.route("/locks/force-release-all", methods=["POST"])
 def force_release_all_locks():
-    """一键清空所有锁"""
     confirm = request.form.get("confirm", "").strip()
     if confirm != "确认清空":
-        flash("请输入 '确认清空' 以确认清空所有锁", "error")
-        return redirect(url_for("settings.index"))
+        flash("请输入 '确认清空' 以确认", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id))
     count = force_release_all()
     flash(f"已清空 {count} 个活跃锁", "success")
-    return redirect(url_for("settings.index"))
+    return redirect(url_for("settings.index", uid=g.current_user.id))
 
 
 @bp.route("/locks/cleanup", methods=["POST"])
 def cleanup_expired_locks():
-    """手动清理过期锁"""
     count = cleanup_expired()
     flash(f"已清理 {count} 个过期锁", "success")
-    return redirect(url_for("settings.index"))
+    return redirect(url_for("settings.index", uid=g.current_user.id))
 
 
-# -------------------------------------------------------------- 菜单管理 (Sheet CRUD)
-@bp.route("/sheets/add", methods=["POST"])
-def sheet_add():
-    """新增工作表 (左侧菜单项)"""
-    name = request.form.get("sheet_name", "").strip()
-    kind = request.form.get("sheet_kind", "entries")
-    parent_id = request.form.get("parent_id", type=int)
-    
+# -------------------------------------------------------------- 菜单管理
+@bp.route("/menus/add", methods=["POST"])
+def menu_add():
+    name = request.form.get("name", "").strip()
     if not name:
         flash("菜单名称不能为空", "error")
-        return redirect(url_for("settings.index"))
-    
-    # 检查同级是否有重名
-    query = select(Sheet).where(Sheet.name == name)
-    if parent_id:
-        query = query.where(Sheet.parent_id == parent_id)
-    else:
-        query = query.where(Sheet.parent_id.is_(None))
-    
-    existing = db.session.execute(query).scalars().first()
-    if existing:
-        flash(f"同级菜单 '{name}' 已存在", "error")
-        return redirect(url_for("settings.index"))
-    
-    # 计算层级
-    level = 0
-    if parent_id:
-        parent = db.session.get(Sheet, parent_id)
-        if parent:
-            level = parent.level + 1
-        else:
-            flash("父菜单不存在", "error")
-            return redirect(url_for("settings.index"))
-    
-    # 计算同级排序
-    order_query = select(func.max(Sheet.sort_order))
-    if parent_id:
-        order_query = order_query.where(Sheet.parent_id == parent_id)
-    else:
-        order_query = order_query.where(Sheet.parent_id.is_(None))
-    max_order = db.session.execute(order_query).scalar() or 0
-    
-    db.session.add(Sheet(
-        name=name, kind=kind, sort_order=max_order + 1,
-        is_active=True, source_file="manual",
-        parent_id=parent_id, level=level,
-    ))
+        return redirect(url_for("settings.index", uid=g.current_user.id) + "#menus")
+    parent_id = request.form.get("parent_id", type=int)
+    filter_type = request.form.get("filter_type", "").strip()
+    filter_owner = request.form.get("filter_owner", "").strip()
+    sort_order = request.form.get("sort_order", 0, type=int)
+    mi = MenuItem(
+        name=name, parent_id=parent_id if parent_id else None,
+        filter_type=filter_type, filter_owner=filter_owner,
+        sort_order=sort_order, is_active=True,
+    )
+    db.session.add(mi)
     db.session.commit()
-    flash(f"已添加菜单: {name} ({kind})", "success")
-    return redirect(url_for("settings.index"))
+    flash(f"已添加菜单: {name}", "success")
+    return redirect(url_for("settings.index", uid=g.current_user.id) + "#menus")
 
 
-@bp.route("/sheets/<int:sheet_id>/edit", methods=["POST"])
-def sheet_edit(sheet_id: int):
-    """重命名工作表 / 修改类型 / 修改父菜单"""
-    sheet = db.session.get(Sheet, sheet_id)
-    if not sheet:
-        flash("菜单不存在", "error")
-        return redirect(url_for("settings.index"))
-    new_name = request.form.get("sheet_name", "").strip()
-    new_kind = request.form.get("sheet_kind", sheet.kind)
-    new_parent_id = request.form.get("parent_id", type=int)
-    
-    if not new_name:
+@bp.route("/menus/<int:menu_id>/edit", methods=["POST"])
+def menu_edit(menu_id):
+    mi = db.session.get(MenuItem, menu_id)
+    if not mi:
+        flash("菜单项不存在", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id) + "#menus")
+    name = request.form.get("name", "").strip()
+    if not name:
         flash("菜单名称不能为空", "error")
-        return redirect(url_for("settings.index"))
-    
-    # 检查同级是否有重名
-    if new_name != sheet.name or new_parent_id != sheet.parent_id:
-        query = select(Sheet).where(Sheet.name == new_name)
-        if new_parent_id:
-            query = query.where(Sheet.parent_id == new_parent_id)
-        else:
-            query = query.where(Sheet.parent_id.is_(None))
-        query = query.where(Sheet.id != sheet_id)  # 排除自己
-        
-        dup = db.session.execute(query).scalars().first()
-        if dup:
-            flash(f"同级菜单名 '{new_name}' 已被占用", "error")
-            return redirect(url_for("settings.index"))
-    
-    if new_name != sheet.name:
-        old_name = sheet.name
-        sheet.name = new_name
-        db.session.query(Item).filter(Item.sheet == old_name).update({"sheet": new_name})
-        db.session.query(Account).filter(Account.sheet == old_name).update({"sheet": new_name})
-        db.session.query(SheetColumn).filter(SheetColumn.sheet_name == old_name).update({"sheet_name": new_name})
-    
-    sheet.kind = new_kind
-    
-    # 更新父菜单和层级
-    if new_parent_id != sheet.parent_id:
-        # 防止循环引用
-        if new_parent_id == sheet.id:
-            flash("不能将自己设为父菜单", "error")
-            return redirect(url_for("settings.index"))
-        
-        # 检查是否会造成循环引用
-        def is_descendant(parent_id, child_id):
-            """检查child_id是否是parent_id的后代"""
-            if parent_id == child_id:
-                return True
-            parent = db.session.get(Sheet, parent_id)
-            if parent and parent.parent_id:
-                return is_descendant(parent.parent_id, child_id)
-            return False
-        
-        if new_parent_id and is_descendant(new_parent_id, sheet.id):
-            flash("不能将菜单移动到自己的子菜单下", "error")
-            return redirect(url_for("settings.index"))
-        
-        sheet.parent_id = new_parent_id
-        # 重新计算层级
-        if new_parent_id:
-            parent = db.session.get(Sheet, new_parent_id)
-            if parent:
-                sheet.level = parent.level + 1
-        else:
-            sheet.level = 0
-    
+        return redirect(url_for("settings.index", uid=g.current_user.id) + "#menus")
+    parent_id = request.form.get("parent_id", type=int)
+    if parent_id == menu_id:
+        flash("不能将菜单设为自身的子菜单", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id) + "#menus")
+    mi.name = name
+    mi.parent_id = parent_id if parent_id else None
+    mi.filter_type = request.form.get("filter_type", "").strip()
+    mi.filter_owner = request.form.get("filter_owner", "").strip()
+    mi.sort_order = request.form.get("sort_order", 0, type=int)
+    mi.is_active = request.form.get("is_active") == "on"
     db.session.commit()
-    flash(f"已更新菜单: {new_name}", "success")
-    return redirect(url_for("settings.index"))
+    flash(f"已更新菜单: {name}", "success")
+    return redirect(url_for("settings.index", uid=g.current_user.id) + "#menus")
 
 
-@bp.route("/sheets/<int:sheet_id>/delete", methods=["POST"])
-def sheet_delete(sheet_id: int):
-    """删除工作表 (级联删除子菜单)"""
-    sheet = db.session.get(Sheet, sheet_id)
-    if not sheet:
-        flash("菜单不存在", "error")
-        return redirect(url_for("settings.index"))
-    
-    name = sheet.name
-    
-    # 级联删除所有子菜单
-    def delete_recursive(sheet_obj):
-        """递归删除子菜单"""
-        for child in sheet_obj.children:
-            delete_recursive(child)
-        db.session.delete(sheet_obj)
-    
-    delete_recursive(sheet)
+@bp.route("/menus/<int:menu_id>/delete", methods=["POST"])
+def menu_delete(menu_id):
+    mi = db.session.get(MenuItem, menu_id)
+    if not mi:
+        flash("菜单项不存在", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id) + "#menus")
+    name = mi.name
+    db.session.delete(mi)
     db.session.commit()
-    flash(f"已删除菜单及其子菜单: {name}", "success")
-    return redirect(url_for("settings.index"))
+    flash(f"已删除菜单: {name} (含子菜单)", "success")
+    return redirect(url_for("settings.index", uid=g.current_user.id) + "#menus")
 
 
-# -------------------------------------------------------------- 数据导出
+# -------------------------------------------------------------- 模板下载
+@bp.route("/template/download")
+def download_template():
+    """下载账户条目模板 (CSV)"""
+    buf = io.StringIO()
+    buf.write("\ufeff")
+    writer = csv.writer(buf)
+    writer.writerow(["名称", "类型", "属主", "备注"])
+    writer.writerow(["工资", "收入", "家庭", "月度工资收入"])
+    writer.writerow(["餐饮", "支出", "家庭", "日常饮食"])
+    writer.writerow(["现金结余", "结余", "家庭", "月末现金"])
+    buf.seek(0)
+    return send_file(
+        io.BytesIO(buf.getvalue().encode("utf-8-sig")),
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name="account_items_template.csv",
+    )
+
+
+# -------------------------------------------------------------- JSON 导出
 @bp.route("/export/json")
 def export_json():
-    """导出当前用户数据为 JSON"""
-    from io import BytesIO
-    from ..services.exporter import export_json as _do_export
-    year = request.args.get("year", type=int)
-    month = request.args.get("month", type=int)
-    data = _do_export(year=year, month=month, user_id=g.user_id)
-    name = f"budget_{year or 'all'}-{month or 'all'}.json"
-    from flask import send_file
+    """导出数据库项目和菜单结构为 JSON"""
+    items = db.session.execute(
+        select(AccountItem).order_by(AccountItem.type, AccountItem.sort_order)
+    ).scalars().all()
+    menus_all = db.session.execute(
+        select(MenuItem).order_by(MenuItem.sort_order, MenuItem.id)
+    ).scalars().all()
+    users = db.session.execute(
+        select(User).order_by(User.sort_order)
+    ).scalars().all()
+    settings_all = db.session.execute(
+        select(Setting).order_by(Setting.key)
+    ).scalars().all()
+
+    data = {
+        "export_time": datetime.now().isoformat(),
+        "version": "2.0",
+        "account_items": [
+            {"name": it.name, "type": it.type, "owner": it.owner,
+             "note": it.note or "", "sort_order": it.sort_order,
+             "is_active": it.is_active}
+            for it in items
+        ],
+        "menu_items": [
+            {"name": m.name, "parent_id": m.parent_id,
+             "filter_type": m.filter_type or "",
+             "filter_owner": m.filter_owner or "",
+             "sort_order": m.sort_order, "is_active": m.is_active}
+            for m in menus_all
+        ],
+        "users": [
+            {"name": u.name, "is_default": u.is_default,
+             "sort_order": u.sort_order}
+            for u in users
+        ],
+        "settings": [
+            {"key": s.key, "value": s.value, "vtype": s.vtype}
+            for s in settings_all
+        ],
+    }
+    buf = io.BytesIO()
+    buf.write(json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
+    buf.seek(0)
     return send_file(
-        BytesIO(data), mimetype="application/json",
-        as_attachment=True, download_name=name,
+        buf, mimetype="application/json", as_attachment=True,
+        download_name=f"family_budget_export_{datetime.now().strftime('%Y%m%d')}.json",
     )
 
 
-@bp.route("/export/excel")
-def export_excel():
-    """导出当前用户数据为 Excel"""
-    from ..services.exporter import export_excel as _do_export
-    from flask import send_file
-    year = request.args.get("year", type=int)
-    month = request.args.get("month", type=int)
-    buf = _do_export(year=year, month=month, user_id=g.user_id)
-    name = f"budget_{year or 'all'}-{month or 'all'}.xlsx"
-    return send_file(
-        buf, mimetype="application/vnd.openxmlformats-officedocument."
-        "spreadsheetml.sheet",
-        as_attachment=True, download_name=name,
+# -------------------------------------------------------------- JSON 导入
+@bp.route("/import/json", methods=["POST"])
+def import_json():
+    """导入 JSON (菜单结构 + 账户条目 + 用户 + 配置)"""
+    file = request.files.get("json_file")
+    if not file or not file.filename:
+        flash("请选择 JSON 文件", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id) + "#import-export")
+    try:
+        raw = file.read().decode("utf-8-sig")
+        data = json.loads(raw)
+    except Exception as e:
+        flash(f"JSON 解析失败: {e}", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id) + "#import-export")
+
+    mode = request.form.get("import_mode", "merge")
+    added_items = added_menus = added_users = 0
+
+    if mode == "replace":
+        db.session.query(Asset).delete()
+        db.session.query(AccountItem).delete()
+        db.session.query(MenuItem).delete()
+        db.session.commit()
+
+    # 用户
+    for u in data.get("users", []):
+        existing = db.session.execute(
+            select(User).where(User.name == u["name"])
+        ).scalars().first()
+        if existing:
+            if mode == "replace":
+                existing.is_default = u.get("is_default", False)
+                existing.sort_order = u.get("sort_order", 0)
+        else:
+            db.session.add(User(
+                name=u["name"], is_default=u.get("is_default", False),
+                sort_order=u.get("sort_order", 0),
+            ))
+            added_users += 1
+
+    # 账户条目
+    for it in data.get("account_items", []):
+        existing = db.session.execute(
+            select(AccountItem).where(
+                AccountItem.name == it["name"],
+                AccountItem.type == it["type"],
+                AccountItem.owner == it["owner"],
+            )
+        ).scalars().first()
+        if existing:
+            if mode == "replace":
+                existing.note = it.get("note", "")
+                existing.sort_order = it.get("sort_order", 0)
+                existing.is_active = it.get("is_active", True)
+        else:
+            db.session.add(AccountItem(
+                name=it["name"], type=it["type"], owner=it["owner"],
+                note=it.get("note", ""), sort_order=it.get("sort_order", 0),
+                is_active=it.get("is_active", True),
+            ))
+            added_items += 1
+
+    # 菜单项 (需要处理 parent_id 映射)
+    old_to_new: dict[int, int] = {}
+    for m in data.get("menu_items", []):
+        old_parent = m.get("parent_id")
+        new_parent = old_to_new.get(old_parent) if old_parent else None
+        mi = MenuItem(
+            name=m["name"], parent_id=new_parent,
+            filter_type=m.get("filter_type", ""),
+            filter_owner=m.get("filter_owner", ""),
+            sort_order=m.get("sort_order", 0),
+            is_active=m.get("is_active", True),
+        )
+        db.session.add(mi)
+        db.session.flush()
+        old_to_new[m.get("id", mi.id)] = mi.id
+        added_menus += 1
+
+    # 配置项
+    for s in data.get("settings", []):
+        existing = db.session.execute(
+            select(Setting).where(Setting.key == s["key"])
+        ).scalars().first()
+        if existing:
+            existing.value = s["value"]
+            existing.vtype = s.get("vtype", "str")
+        else:
+            db.session.add(Setting(
+                key=s["key"], value=s["value"],
+                vtype=s.get("vtype", "str"),
+            ))
+
+    db.session.commit()
+    flash(
+        f"导入完成: 条目 +{added_items}, 菜单 +{added_menus}, 用户 +{added_users}",
+        "success",
     )
+    return redirect(url_for("settings.index", uid=g.current_user.id) + "#import-export")
+
+
+# -------------------------------------------------------------- 数据导入 (CSV)
+@bp.route("/import/csv", methods=["POST"])
+def import_csv():
+    """从 CSV 批量导入账户条目"""
+    file = request.files.get("csv_file")
+    if not file or not file.filename:
+        flash("请选择 CSV 文件", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id) + "#import-export")
+    try:
+        raw = file.read().decode("utf-8-sig")
+        reader = csv.DictReader(io.StringIO(raw))
+    except Exception as e:
+        flash(f"CSV 解析失败: {e}", "error")
+        return redirect(url_for("settings.index", uid=g.current_user.id) + "#import-export")
+
+    added, skipped = 0, 0
+    max_order = db.session.execute(
+        select(func.max(AccountItem.sort_order))
+    ).scalar() or 0
+
+    for row in reader:
+        name = (row.get("名称") or row.get("name") or "").strip()
+        itype = (row.get("类型") or row.get("type") or "").strip()
+        owner = (row.get("属主") or row.get("owner") or "家庭").strip()
+        note = (row.get("备注") or row.get("note") or "").strip()
+        if not name or not itype:
+            continue
+        existing = db.session.execute(
+            select(AccountItem).where(
+                AccountItem.name == name,
+                AccountItem.type == itype,
+                AccountItem.owner == owner,
+            )
+        ).scalars().first()
+        if existing:
+            skipped += 1
+            continue
+        max_order += 1
+        db.session.add(AccountItem(
+            name=name, type=itype, owner=owner, note=note,
+            sort_order=max_order, is_active=True,
+        ))
+        added += 1
+    db.session.commit()
+    flash(f"CSV 导入: 新增 {added} 条, 跳过 {skipped} 条(已存在)", "success")
+    return redirect(url_for("settings.index", uid=g.current_user.id) + "#import-export")

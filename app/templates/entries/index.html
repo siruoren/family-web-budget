@@ -1,94 +1,115 @@
 {% extends "base.html" %}
-{% block title %}月度条目 · {{ year }}年{{ month }}月{% endblock %}
+{% block title %}{{ year }}年{{ month }}月 · 月度条目{% endblock %}
 
 {% block content %}
-<div class="action-row">
-  <h2 class="section-title" style="margin:0;border:none;padding:0;">
-    {{ year }}年{{ month }}月 条目
-  </h2>
-  <form class="period-picker" method="get" action="{{ url_for('entries.index') }}" style="margin-left:auto;">
-    <select name="year">
-      {% for y in range(current_year - 10, current_year + 2) %}
-        <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}年</option>
-      {% endfor %}
-    </select>
-    <select name="month">
-      {% for m in range(1, 13) %}
-        <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}月</option>
-      {% endfor %}
-    </select>
-    <button type="submit" class="btn btn-sm">切换</button>
-  </form>
-</div>
-
-<div class="card">
-  <div class="section-title" style="margin-top:0;">已填写条目 ({{ summary.income_items|length + summary.expense_items|length }})</div>
-  {% if summary.income_items or summary.expense_items %}
-  <table>
-    <thead>
-      <tr><th>分类</th><th>归属</th><th>条目</th><th class="num">金额</th><th>备注</th><th>来源</th></tr>
-    </thead>
-    <tbody>
-      {% for it in summary.income_items %}
-      <tr>
-        <td><span class="badge tag-income">收入</span></td>
-        <td>{{ it.owner }}</td>
-        <td>{{ it.name }}</td>
-        <td class="num positive">{{ fmt_money(it.value) }}</td>
-        <td>{{ it.note }}</td>
-        <td><span class="badge">{{ it.source }}</span></td>
-      </tr>
-      {% endfor %}
-      {% for it in summary.expense_items %}
-      <tr>
-        <td><span class="badge tag-expense">支出</span></td>
-        <td>{{ it.owner }}</td>
-        <td>{{ it.name }}</td>
-        <td class="num negative">{{ fmt_money(it.value) }}</td>
-        <td>{{ it.note }}</td>
-        <td><span class="badge">{{ it.source }}</span></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <div class="empty-state">
-    <p>本月暂无已填写条目</p>
+<div class="page-head">
+  <h2>月度条目</h2>
+  <div class="page-actions">
+    <form class="period-form" method="get" action="{{ url_for('entries.index') }}">
+      {% if current_type %}<input type="hidden" name="type" value="{{ current_type }}">{% endif %}
+      {% if current_owner %}<input type="hidden" name="owner" value="{{ current_owner }}">{% endif %}
+      <select name="year">
+        {% for y in range(current_year - 3, current_year + 2) %}
+        <option value="{{ y }}" {{ 'selected' if y == year }}>{{ y }}年</option>
+        {% endfor %}
+      </select>
+      <select name="month">
+        {% for m in range(1, 13) %}
+        <option value="{{ m }}" {{ 'selected' if m == month }}>{{ m }}月</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-sm">切换</button>
+    </form>
+    {% if current_type or current_owner %}
+    <a class="btn btn-sm" href="{{ url_for('entries.index', year=year, month=month) }}">全部条目</a>
+    {% endif %}
   </div>
-  {% endif %}
 </div>
 
-<div class="card" style="margin-top:1rem;">
-  <div class="section-title" style="margin-top:0;">
-    未填写条目 (<span class="missing-badge">{{ missing_items|length }}</span>) - 红色行需补填
+{# ===== 公式计算卡片 ===== #}
+<section class="card formula-card {{ 'is-anomaly' if calc.anomaly }}">
+  <div class="card-hd">
+    资产公式 · {{ calc.formula }}
+    {% if calc.anomaly %}<span class="badge badge-danger">数据异常</span>{% endif %}
   </div>
-  {% if missing_items %}
-  <table>
-    <thead>
-      <tr><th>分类</th><th>归属</th><th>子分类</th><th>条目</th><th class="num">默认值</th><th>操作</th></tr>
-    </thead>
-    <tbody>
-      {% for it in missing_items %}
-      <tr class="missing-row">
-        <td><span class="badge tag-{{ 'income' if it.category == '收入' else ('expense' if it.category == '支出' else 'balance') }}">{{ it.category }}</span></td>
-        <td>{{ it.owner }}</td>
-        <td>{{ it.sub_category }}</td>
-        <td>{{ it.name }}</td>
-        <td class="num muted">—</td>
-        <td>
-          <a class="btn btn-sm" href="{{ url_for('entries.edit', year=year, month=month) }}#item-{{ it.id }}">补填</a>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <div class="empty-state"><p>本月所有条目均已填写 ✓</p></div>
-  {% endif %}
-</div>
+  <div class="formula-grid">
+    <div><span class="muted">上月结余</span><b>{{ calc.last_balance|fmt_money }}</b></div>
+    <div><span class="muted">当月收入</span><b>{{ calc.income|fmt_money }}</b></div>
+    <div><span class="muted">当月结余</span><b>{{ calc.balance|fmt_money }}</b></div>
+    <div><span class="muted">公式支出</span><b>{{ calc.calculated_expense|fmt_money }}</b></div>
+    <div><span class="muted">支出合计</span><b>{{ calc.expense_items|fmt_money }}</b></div>
+    <div><span class="muted">差额</span><b>{{ calc.other_expense|fmt_money }}</b></div>
+  </div>
+  {% if calc.anomaly %}<div class="anomaly-msg">{{ calc.anomaly_msg }}</div>{% endif %}
+</section>
 
-<div class="action-row" style="margin-top:1rem;">
-  <a class="btn" href="{{ url_for('entries.edit', year=year, month=month) }}">在线填写本月</a>
-  <a class="btn btn-secondary" href="{{ url_for('entries.balances', year=year, month=month) }}">月末结余</a>
-</div>
+{# ===== 条目填写表 ===== #}
+<form method="post" action="{{ url_for('entries.save') }}" class="entry-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="year" value="{{ year }}">
+  <input type="hidden" name="month" value="{{ month }}">
+  <input type="hidden" name="filter_type" value="{{ current_type }}">
+  <input type="hidden" name="filter_owner" value="{{ current_owner }}">
+
+  <div class="table-wrap">
+    <table class="data-table entry-table">
+      <thead>
+        <tr>
+          <th class="c-idx">#</th>
+          <th class="c-name">名称</th>
+          <th class="c-type">类型</th>
+          <th class="c-owner">属主</th>
+          <th class="c-val">金额</th>
+          <th class="c-note">备注</th>
+          <th class="c-lock">锁</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% set ns = namespace(c=0) %}
+      {% for it in all_items %}
+        {% set a = asset_map.get(it.id) %}
+        {% set lk = locks.get(it.id) if locks else none %}
+        {% set locked_by_other = lk and lk.user_id != my_user_id %}
+        <tr id="row-{{ it.id }}" class="{{ 'row-locked' if locked_by_other }}">
+          <td class="c-idx">{% set ns.c = ns.c + 1 %}{{ ns.c }}</td>
+          <td class="c-name">{{ it.name }}</td>
+          <td class="c-type"><span class="chip chip-{{ 'income' if it.type == '收入' else ('expense' if it.type == '支出' else 'balance') }}">{{ it.type }}</span></td>
+          <td class="c-owner">{{ it.owner }}</td>
+          <td class="c-val">
+            <input type="number" step="0.01" name="item_{{ it.id }}"
+                   value="{{ a.value if a and a.value is not none else '' }}"
+                   data-rt="asset" data-rid="{{ it.id }}"
+                   {{ 'disabled' if locked_by_other }}
+                   placeholder="0.00" class="table-input">
+          </td>
+          <td class="c-note">
+            <input type="text" name="note_{{ it.id }}"
+                   value="{{ a.note if a else '' }}" maxlength="120"
+                   class="table-input">
+          </td>
+          <td class="c-lock" id="lock-{{ it.id }}">
+            {% if locked_by_other %}
+              <span class="locked" title="被 {{ lk.user_label }} 锁定">🔒 {{ lk.user_label }}</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="empty-row">暂无条目, 请到「系统配置」新增</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">保存数据</button>
+    <a class="btn" href="{{ url_for('entries.index', type=current_type, owner=current_owner, year=year, month=month) }}">刷新</a>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.EDIT_LOCK = { year: {{ year }}, month: {{ month }}, userId: "{{ my_user_id }}" };
+</script>
+<script src="{{ url_for('static', filename='js/edit_lock.js') }}"></script>
 {% endblock %}

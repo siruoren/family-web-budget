@@ -1,157 +1,140 @@
-"""模板上下文注入 - 月份选择器 / 当前周期 / 统计概览 / 并发锁用户标识 / 侧边栏"""
+"""模板上下文注入 - 用户管理 / 侧边栏 / 月份选择 / 全局变量
+
+v2 架构: 用户由 URL (?uid=) 决定, 侧边栏由 MenuItem 多级菜单驱动
+"""
 from datetime import datetime
-from flask import g, session, url_for
-from sqlalchemy import select
+from flask import g, session, url_for, request
+from sqlalchemy import select, func
 
 from .. import db
-from ..models import Sheet, Account, SheetColumn
+from ..models import User, AccountItem, MenuItem
 
 
 def ensure_user():
-    """确保每个会话拥有 user_id (等于用户输入的用户名)
+    """从 URL (?uid=N) 提取当前用户; 否则回退 session / 默认用户"""
+    uid_arg = request.args.get("uid", type=int)
+    if uid_arg:
+        user = db.session.get(User, uid_arg)
+        if user:
+            g.current_user = user
+            session["last_user_id"] = user.id
+            return
+    if hasattr(g, "current_user") and g.current_user:
+        return
+    last_uid = session.get("last_user_id")
+    if last_uid:
+        user = db.session.get(User, last_uid)
+        if user:
+            g.current_user = user
+            return
+    user = db.session.execute(
+        select(User).where(User.is_default == True).order_by(User.sort_order)
+    ).scalars().first()
+    if not user:
+        user = db.session.execute(
+            select(User).order_by(User.sort_order, User.id)
+        ).scalars().first()
+    if not user:
+        user = User(name="家庭", is_default=True, sort_order=0)
+        db.session.add(user)
+        db.session.commit()
+    g.current_user = user
 
-    首次访问时 user_id 为空, 触发前端弹窗要求输入用户名.
-    用户输入后, user_id = user_label = 用户名, 数据按 user_id 隔离.
-    """
-    if "user_id" not in session:
-        session["user_id"] = ""
-    if "user_label" not in session:
-        session["user_label"] = ""
-    g.user_id = session["user_id"]
-    g.user_label = session["user_label"]
+
+def get_current_user() -> User:
+    if not hasattr(g, "current_user") or not g.current_user:
+        ensure_user()
+    return g.current_user
 
 
-def _build_sidebar_tree() -> list:
-    """构建左侧多级菜单: 支持无限层级菜单结构
+def get_all_users() -> list:
+    return db.session.execute(
+        select(User).order_by(User.sort_order, User.id)
+    ).scalars().all()
 
-    - 基于 Sheet 表的 parent_id 实现多层级
-    - balances 类: 叶子=账户 (链接到账户编辑), 数据来自 Account.sheet/group
-    - entries  类: 叶子=条目列名 (链接到 /sheet/<name> 跳转该年条目),
-                  数据来自 SheetColumn (各年度表实际列名)
-    - other    类: 叶子菜单 "查看 ›" -> /sheet/<name>
+
+def _build_sidebar() -> list:
+    """从 MenuItem 表构建多层级侧边菜单树
+
+    递归构建: 每个节点包含 name, url, count, children
+    叶子节点(有 filter)的 url 指向 /entries?type=&owner=
     """
     try:
-        # 获取所有激活的顶级菜单
-        sheets = db.session.execute(
-            select(Sheet).where(
-                Sheet.is_active == True,  # noqa: E712
-                Sheet.parent_id.is_(None)
-            ).order_by(Sheet.sort_order, Sheet.id)
+        roots = db.session.execute(
+            select(MenuItem).where(
+                MenuItem.parent_id.is_(None),
+                MenuItem.is_active == True,  # noqa: E712
+            ).order_by(MenuItem.sort_order, MenuItem.id)
         ).scalars().all()
     except Exception:
         return []
-    if not sheets:
-        return []
 
-    # 结余类账户: 按 sheet+group 分组
-    bal_sheet_names = [s.name for s in sheets if s.kind == "balances"]
-    accounts_by_sheet: dict = {}
-    if bal_sheet_names:
-        accs = db.session.execute(
-            select(Account).where(
-                Account.is_active == True,  # noqa: E712
-                Account.sheet.in_(bal_sheet_names),
-            ).order_by(Account.sort_order, Account.id)
-        ).scalars().all()
-        for a in accs:
-            accounts_by_sheet.setdefault(a.sheet, []).append(a)
-
-    # 条目类列结构 (SheetColumn): 按 sheet+group 分组
-    ent_sheet_names = [s.name for s in sheets if s.kind == "entries"]
-    cols_by_sheet: dict = {}
-    if ent_sheet_names:
-        cols = db.session.execute(
-            select(SheetColumn).where(
-                SheetColumn.sheet_name.in_(ent_sheet_names)
-            ).order_by(SheetColumn.sort_order, SheetColumn.id)
-        ).scalars().all()
-        for c in cols:
-            cols_by_sheet.setdefault(c.sheet_name, []).append(c)
-
-    def build_sheet_node(sheet: Sheet) -> dict:
-        """递归构建菜单节点"""
-        node = {
-            "name": sheet.name, "kind": sheet.kind, "order": sheet.sort_order,
-            "groups": [], "count": 0,
-            "url": url_for("sheets.detail", name=sheet.name),
-            "children": [],  # 子菜单
-        }
-        
-        # 处理子菜单
+    def _build_node(node) -> dict:
         children = db.session.execute(
-            select(Sheet).where(
-                Sheet.parent_id == sheet.id,
-                Sheet.is_active == True  # noqa: E712
-            ).order_by(Sheet.sort_order, Sheet.id)
+            select(MenuItem).where(
+                MenuItem.parent_id == node.id,
+                MenuItem.is_active == True,  # noqa: E712
+            ).order_by(MenuItem.sort_order, MenuItem.id)
         ).scalars().all()
-        
-        for child in children:
-            node["children"].append(build_sheet_node(child))
-            node["count"] += 1
-        
-        # 如果没有子菜单，处理原有的分组逻辑
-        if not node["children"]:
-            if sheet.kind == "balances":
-                accs = accounts_by_sheet.get(sheet.name, [])
-                gmap: dict = {}
-                gorder: list = []
-                for a in accs:
-                    gname = a.group or a.type or "其他"
-                    if gname not in gmap:
-                        gmap[gname] = []
-                        gorder.append(gname)
-                    gmap[gname].append({
-                        "name": a.name,
-                        "url": url_for("sheets.detail", name=sheet.name),
-                        "sub": f"{a.owner} · {a.type}",
-                    })
-                for gname in gorder:
-                    node["groups"].append({"name": gname, "count": len(gmap[gname]),
-                                           "leaves": gmap[gname]})
-                node["count"] = len(accs)
-            elif sheet.kind == "entries":
-                cols = cols_by_sheet.get(sheet.name, [])
-                gmap: dict = {}
-                gorder: list = []
-                for c in cols:
-                    if c.group not in gmap:
-                        gmap[c.group] = []
-                        gorder.append(c.group)
-                    gmap[c.group].append({
-                        "name": c.name,
-                        "url": url_for("sheets.detail", name=sheet.name),
-                        "sub": c.item_key.split("|", 1)[0] if c.item_key else "",
-                    })
-                for gname in gorder:
-                    node["groups"].append({"name": gname, "count": len(gmap[gname]),
-                                           "leaves": gmap[gname]})
-                node["count"] = len(cols)
-        
-        return node
 
-    tree = []
-    for s in sheets:
-        tree.append(build_sheet_node(s))
-    return tree
+        child_list = [_build_node(c) for c in children]
+
+        has_filter = bool(node.filter_type or node.filter_owner)
+        if has_filter:
+            params = {}
+            if node.filter_type:
+                params["type"] = node.filter_type
+            if node.filter_owner:
+                params["owner"] = node.filter_owner
+            url = url_for("entries.index", **params)
+        else:
+            url = ""
+
+        count = 0
+        if has_filter:
+            q = select(func.count(AccountItem.id)).where(
+                AccountItem.is_active == True  # noqa: E712
+            )
+            if node.filter_type:
+                q = q.where(AccountItem.type == node.filter_type)
+            if node.filter_owner:
+                q = q.where(AccountItem.owner == node.filter_owner)
+            count = db.session.execute(q).scalar() or 0
+
+        return {
+            "id": node.id,
+            "name": node.name,
+            "url": url,
+            "count": count,
+            "has_filter": has_filter,
+            "icon": node.icon or "",
+            "children": child_list,
+        }
+
+    return [_build_node(r) for r in roots]
 
 
 def inject_globals():
     now = datetime.now()
-    # 用户选择的周期 (从 query / session 读取, 默认当月)
     sel_year = session.get("sel_year", now.year)
     sel_month = session.get("sel_month", now.month)
-    # 侧边栏树: 请求级缓存 (避免同一请求多次构建)
-    if not hasattr(g, "_sidebar_tree"):
-        g._sidebar_tree = _build_sidebar_tree()
+
+    user = get_current_user()
+
+    if not hasattr(g, "_sidebar"):
+        g._sidebar = _build_sidebar()
+
+    users = get_all_users()
+
     return {
         "current_year": now.year,
         "current_month": now.month,
         "sel_year": sel_year,
         "sel_month": sel_month,
         "period_label": f"{sel_year}年{sel_month}月",
-        "user_id": g.get("user_id", session.get("user_id", "anonymous")),
-        "user_label": g.get(
-            "user_label", session.get("user_label", "anonymous")
-        ),
-        "sidebar_tree": g._sidebar_tree,
+        "current_user": user,
+        "current_user_id": user.id if user else 0,
+        "current_user_name": user.name if user else "未命名",
+        "all_users": users,
+        "sidebar_tree": g._sidebar,
     }
