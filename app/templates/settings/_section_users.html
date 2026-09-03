@@ -1,12 +1,12 @@
 {# 用户管理分片 - AJAX 替换整段 #}
 <section id="users" class="card" data-section="users">
-  <div class="card-hd">用户管理 <span class="muted">点击切换见顶部下拉; 默认用户为打开页面时的默认身份; 创建用户需配置密码</span></div>
+  <div class="card-hd">用户管理 <span class="muted">点击切换见顶部下拉; 默认用户为打开页面时的默认身份; 密码可留空(不门禁), 设密码后该用户访问需先解锁</span></div>
   <div class="card-body">
     <form class="inline-form" method="post" action="{{ url_for('settings.user_add') }}" data-api="1">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="text" name="name" placeholder="新用户名" required maxlength="32">
-      <input type="password" name="password" placeholder="用户密码" required minlength="4" title="该用户访问数据时需输入此密码">
-      <input type="password" name="password2" placeholder="确认密码" required minlength="4">
+      <input type="password" name="password" placeholder="密码(可选,≥4位)" minlength="4" title="留空=不设密码(不门禁); 设密码后该用户访问需先输入密码解锁">
+      <input type="password" name="password2" placeholder="确认密码" minlength="4">
       <label class="cb"><input type="checkbox" name="is_default"> 设为默认</label>
       <button class="btn btn-sm btn-primary">添加用户</button>
     </form>

@@ -90,6 +90,25 @@ check("user add 返回 users+sysinfo+security", j and
       {"users","sysinfo","security"} <= set((j.get("sections") or {}).keys()))
 check("user add 分片含新用户", j and "新人" in (j.get("sections") or {}).get("users", ""))
 
+# 6.5 用户新增 (无密码 - 不门禁)
+r = post("/settings/users/add", name="无密码用户", password="", password2="")
+j = r.get_json()
+check("user add no-password ok", j and j.get("ok") is True)
+check("user add no-password 分片含", j and "无密码用户" in (j.get("sections") or {}).get("users", ""))
+with app.app_context():
+    u2 = db.session.execute(db.select(User).where(User.name == "无密码用户")).scalars().first()
+    check("无密码用户 password_hash 为空", u2 and not u2.password_hash, str(u2))
+
+# 6.6 错误: 密码不一致
+r = post("/settings/users/add", name="x", password="abc", password2="xyz")
+j = r.get_json()
+check("mismatch pwd ok=false", j and j.get("ok") is False)
+
+# 6.7 错误: 密码太短 (有密码时)
+r = post("/settings/users/add", name="y", password="ab", password2="ab")
+j = r.get_json()
+check("short pwd ok=false", j and j.get("ok") is False)
+
 # 7. 公式更新
 r = post("/settings/formula", formula="上月结余+当月收入-当月结余=支出")
 j = r.get_json()
@@ -142,6 +161,7 @@ check("entries 页含分组合计 span",
       'id="sumIncome"' in ehtml and 'id="sumExpense"' in ehtml
       and 'id="sumBalance"' in ehtml and 'id="sumNet"' in ehtml)
 check("entries 页 tfoot 含分组合计文案", "分组合计" in ehtml)
+check("entries 页表单有 auto-submit", "auto-submit" in ehtml, "missing auto-submit class")
 
 # 新增类型
 r = post("/settings/types/add", name="投资")

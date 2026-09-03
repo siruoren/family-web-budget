@@ -174,10 +174,13 @@ def user_add():
     password2 = request.form.get("password2", "")
     if not name:
         return _done(False, "用户名不能为空")
-    if len(password) < 4:
-        return _done(False, "密码至少 4 位")
-    if password != password2:
-        return _done(False, "两次输入的密码不一致")
+    # 密码可留空 (不门禁); 填了则校验长度与一致性
+    has_password = bool(password)
+    if has_password:
+        if len(password) < 4:
+            return _done(False, "密码至少 4 位")
+        if password != password2:
+            return _done(False, "两次输入的密码不一致")
     existing = db.session.execute(
         select(User).where(User.name == name)
     ).scalars().first()
@@ -189,7 +192,7 @@ def user_add():
     is_default = request.form.get("is_default") == "on"
     user = User(
         name=name, sort_order=max_order + 1, is_default=is_default,
-        password_hash=auth.hash_password(password),
+        password_hash=auth.hash_password(password) if has_password else "",
     )
     db.session.add(user)
     if is_default:
@@ -197,8 +200,10 @@ def user_add():
             {"is_default": False}
         )
     db.session.commit()
+    msg = f"已创建用户: {name}"
+    msg += " (已配置访问密码)" if has_password else " (无密码, 不门禁)"
     return _done(
-        True, f"已创建用户: {name} (已配置访问密码)",
+        True, msg,
         ("users", "sysinfo", "security"),
     )
 
