@@ -124,7 +124,7 @@ def _seed_menu():
     """首次启动补齐: 默认左侧菜单结构 (收入/支出/结余 三组)"""
     from .models import MenuItem
 
-    if db.session.query(MenuItem.id).scalar():
+    if db.session.query(MenuItem).first():
         return
 
     menus = [

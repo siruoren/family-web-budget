@@ -12,6 +12,9 @@ from sqlalchemy import select
 from .. import db
 from ..models import AccountItem, Asset, EditLock
 from ..services.formula import calculate_month, get_all_types
+from ..services.analysis import (
+    period_series, monthly_summary, missing_items, _prev_month,
+)
 from ..services.locking import (
     acquire_lock, release_lock, heartbeat_lock, list_locks,
     get_lock_ttl, is_lock_enabled, check_conflict,
@@ -31,7 +34,7 @@ def _get_period() -> tuple[int, int]:
 
 @bp.route("/entries")
 def index():
-    """月度条目填写页 - 只显示填写表格, 不显示图表"""
+    """月度条目填写页 - 顶部图表 + Excel 表单 + 锁状态"""
     year, month = _get_period()
     uid = g.current_user.id
 
@@ -61,13 +64,72 @@ def index():
 
     locks = list_locks("asset", year, month)
 
+    # ---- 顶部图表数据 ----
+    # 近 12 个月趋势
+    py, pm = _prev_month(year, month)
+    yf = py - 1 if pm == 12 else py
+    mf = pm + 1 if pm < 12 else 1
+    series = period_series(yf, mf, year, month, uid)
+
+    # 当月类型占比 + 量化汇总
+    summary = monthly_summary(year, month, uid)
+    totals = summary["totals"]
+
+    # 未填写条目 (按当前筛选范围)
+    missing = _missing_for_scope(year, month, uid, item_type, owner)
+
+    # 各条目近 12 月均值/合计 (用于表格底部量化条目)
+    item_stats = _item_stats(all_items, yf, mf, year, month, uid)
+
     return render_template(
         "entries/index.html", year=year, month=month,
         all_items=all_items, asset_map=asset_map,
         calc=calc, all_types=all_types,
         current_type=item_type, current_owner=owner,
         locks=locks, my_user_id=str(uid),
+        series=series, totals=totals, missing=missing,
+        item_stats=item_stats, summary=summary,
     )
+
+
+def _missing_for_scope(year, month, user_id, item_type, owner):
+    """当前筛选范围内未填写条目"""
+    all_missing = missing_items(year, month, user_id)
+    out = []
+    for m in all_missing:
+        if item_type and m["type"] != item_type:
+            continue
+        if owner and m["owner"] != owner:
+            continue
+        out.append(m)
+    return out
+
+
+def _item_stats(items, yf, mf, yt, mt, user_id):
+    """各条目近 12 月均值/合计/趋势"""
+    from sqlalchemy import func
+    if not items:
+        return {}
+    ids = [it.id for it in items]
+    rows = db.session.execute(
+        select(
+            Asset.account_item_id,
+            func.sum(Asset.value),
+            func.avg(Asset.value),
+            func.count(Asset.id),
+        ).where(
+            Asset.user_id == user_id,
+            Asset.account_item_id.in_(ids),
+        ).group_by(Asset.account_item_id)
+    ).all()
+    out = {}
+    for item_id, total, avg, cnt in rows:
+        out[item_id] = {
+            "sum": round(float(total or 0), 2),
+            "avg": round(float(avg or 0), 2),
+            "count": int(cnt or 0),
+        }
+    return out
 
 
 @bp.route("/entries/save", methods=["POST"])

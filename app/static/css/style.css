@@ -193,9 +193,9 @@ details.tree-det[open] > .tree-summary::before { transform: rotate(90deg); }
 }
 .stat-label { color: var(--muted); font-size: .82rem; }
 .stat-value { font-size: 1.5rem; font-weight: 700; margin-top: .2rem; font-variant-numeric: tabular-nums; }
-.stat-card.income .stat-value { color: var(--success); }
-.stat-card.expense .stat-value { color: var(--danger); }
-.stat-card.balance .stat-value { color: var(--primary); }
+.stat-card.income .stat-value, .stat-card.stat-income .stat-value { color: var(--success); }
+.stat-card.expense .stat-value, .stat-card.stat-expense .stat-value { color: var(--danger); }
+.stat-card.balance .stat-value, .stat-card.stat-balance .stat-value { color: var(--primary); }
 
 .section-title {
   font-size: 1rem; font-weight: 600; margin: 1.2rem 0 .6rem;
@@ -219,12 +219,17 @@ table.data-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
 .row-inactive { opacity: .5; }
 .row-default { background: var(--success-soft) !important; }
 .row-locked { background: var(--warning-soft) !important; }
+.row-missing { background: #fffbeb !important; }
+.row-total { background: var(--primary-soft); font-weight: 700; }
+.ta-right { text-align: right; }
 
 .entry-table .c-idx { width: 2.5rem; text-align: center; color: var(--muted); }
 .entry-table .c-type { width: 5rem; }
 .entry-table .c-owner { width: 5rem; }
 .entry-table .c-val { width: 8rem; }
+.entry-table .c-stat { width: 5.5rem; text-align: right; font-variant-numeric: tabular-nums; }
 .entry-table .c-lock { width: 6rem; }
+.entry-table tfoot td { border-top: 2px solid var(--primary); }
 
 /* ---------- Chips / Badges ---------- */
 .chip {

@@ -13,7 +13,7 @@ from sqlalchemy import (
     Integer, String, Numeric, ForeignKey, DateTime, Boolean, Text,
     UniqueConstraint, Index,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 
 from . import db
 
@@ -182,7 +182,7 @@ class MenuItem(db.Model):
     created_at = db.Column(DateTime, default=datetime.utcnow)
 
     children = relationship(
-        "MenuItem", backref="parent", remote_side="MenuItem.id",
+        "MenuItem", backref=backref("parent", remote_side=[id]),
         cascade="all, delete-orphan", order_by="MenuItem.sort_order",
     )
 
