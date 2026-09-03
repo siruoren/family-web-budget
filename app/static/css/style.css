@@ -337,6 +337,9 @@ textarea { resize: vertical; }
 .io-block h4 { margin: 0; font-size: .9rem; }
 .io-block form { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
 .io-block .muted { font-size: .82rem; }
+.dl-btns { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.dl-btns .btn { min-width: 8rem; }
+.io-block-export .dl-btns .btn-primary { flex: 1 1 auto; }
 
 /* ---------- Menu management ---------- */
 .menu-table .menu-row.depth-0 > td:first-child { font-weight: 600; }

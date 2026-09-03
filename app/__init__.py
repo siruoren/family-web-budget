@@ -65,7 +65,7 @@ def create_app(config_name: str = "default") -> Flask:
     from .services.auth import init_auth
     init_auth(app)
 
-    # 建表 + 轻量迁移 + 初始化默认账户条目模板 (不导入任何月度数据)
+    # 建表 + 轻量迁移 + 初始化默认用户与菜单 (账目条目默认为空)
     with app.app_context():
         from . import models  # noqa: F401  确保模型被导入
         db.create_all()
@@ -77,13 +77,14 @@ def create_app(config_name: str = "default") -> Flask:
 
 
 def _seed_defaults():
-    """首次启动补齐: 默认用户 + 一组常用账户条目模板
+    """首次启动补齐: 默认用户 (账目条目默认为空, 由用户自行导入历史数据建立)
 
-    仅写"模板"(AccountItem), 不写任何月度资产数据, 不导入示例 Excel。
-    若已存在任意条目则整体跳过, 不重复写入。
+    设计: 不预置任何 AccountItem 模板, 让用户通过
+    系统配置 → 导入导出 → 历史数据导入(可下载模板) 按需建立条目。
+    菜单结构(_seed_menu)仍保留 收入/支出/结余 三组导航分组。
     """
-    from sqlalchemy import select, func
-    from .models import AccountItem, User
+    from sqlalchemy import select
+    from .models import User
 
     # 确保至少有一个默认用户
     user = db.session.execute(
@@ -96,34 +97,6 @@ def _seed_defaults():
         user = any_user or User(name="家庭", is_default=True, sort_order=0)
         if not any_user:
             db.session.add(user)
-
-    # 已有条目则跳过种子
-    if db.session.query(func.count(AccountItem.id)).scalar():
-        db.session.commit()
-        return
-
-    defaults = [
-        # (名称, 类型, 属主, 备注)
-        ("工资", "收入", "家庭", "月度工资收入"),
-        ("奖金", "收入", "家庭", "奖金 / 年终奖"),
-        ("其他收入", "收入", "家庭", "理财 / 兼职等"),
-        ("餐饮", "支出", "家庭", "日常饮食"),
-        ("房租房贷", "支出", "家庭", "住房"),
-        ("水电煤网", "支出", "家庭", "水电气网络"),
-        ("交通", "支出", "家庭", "出行通勤"),
-        ("购物", "支出", "家庭", "日用 / 服装"),
-        ("医疗", "支出", "家庭", "看病药品"),
-        ("娱乐", "支出", "家庭", "影音游玩"),
-        ("教育", "支出", "家庭", "培训书籍"),
-        ("其他支出", "支出", "家庭", "杂项"),
-        ("现金结余", "结余", "家庭", "月末现金"),
-        ("银行卡结余", "结余", "家庭", "月末银行卡"),
-    ]
-    for i, (name, itype, owner, note) in enumerate(defaults):
-        db.session.add(AccountItem(
-            name=name, type=itype, owner=owner, note=note,
-            sort_order=i, is_active=True,
-        ))
     db.session.commit()
 
 

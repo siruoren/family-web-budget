@@ -4,7 +4,6 @@ v2 架构重构
 """
 import os
 import io
-import json
 import platform
 import csv
 from datetime import datetime
@@ -493,200 +492,206 @@ def menu_delete(menu_id):
     return _done(True, f"已删除菜单: {name} (含子菜单)", ("menus",))
 
 
-# -------------------------------------------------------------- 模板下载
-@bp.route("/template/download")
-def download_template():
-    """下载账户条目模板 (CSV)"""
-    buf = io.StringIO()
-    buf.write("\ufeff")
-    writer = csv.writer(buf)
-    writer.writerow(["名称", "类型", "属主", "备注"])
-    writer.writerow(["工资", "收入", "家庭", "月度工资收入"])
-    writer.writerow(["餐饮", "支出", "家庭", "日常饮食"])
-    writer.writerow(["现金结余", "结余", "家庭", "月末现金"])
+# -------------------------------------------------------------- CSV 写入工具
+def _write_csv(rows: list[dict], fieldnames: list[str]) -> io.BytesIO:
+    """把 dict 列表写成 UTF-8 BOM CSV (Excel 友好)"""
+    buf = io.BytesIO()
+    buf.write(b"\xef\xbb\xbf")  # UTF-8 BOM, 让 Excel 正确识别中文
+    text_buf = io.TextIOWrapper(buf, encoding="utf-8", newline="", write_through=True)
+    writer = csv.DictWriter(text_buf, fieldnames=fieldnames)
+    writer.writeheader()
+    for r in rows:
+        writer.writerow({k: r.get(k, "") for k in fieldnames})
+    text_buf.detach()
     buf.seek(0)
+    return buf
+
+
+# -------------------------------------------------------------- 模板下载 (CSV)
+@bp.route("/template/items/csv")
+def download_template_csv():
+    """下载账户条目模板 (CSV)
+
+    表头: name,type,owner,note,sort_order,is_active
+    填好后通过 /import/csv 上传, 系统按表头自动识别为条目结构。
+    """
+    rows = [
+        {"name": "工资", "type": "收入", "owner": "家庭",
+         "note": "月度工资收入", "sort_order": 0, "is_active": "true"},
+        {"name": "餐饮", "type": "支出", "owner": "家庭",
+         "note": "日常饮食", "sort_order": 1, "is_active": "true"},
+        {"name": "现金结余", "type": "结余", "owner": "家庭",
+         "note": "月末现金", "sort_order": 2, "is_active": "true"},
+    ]
+    buf = _write_csv(rows, ["name", "type", "owner", "note",
+                            "sort_order", "is_active"])
     return send_file(
-        io.BytesIO(buf.getvalue().encode("utf-8-sig")),
-        mimetype="text/csv",
-        as_attachment=True,
+        buf, mimetype="text/csv", as_attachment=True,
         download_name="account_items_template.csv",
     )
 
 
-# -------------------------------------------------------------- JSON 导出
-@bp.route("/export/json")
-def export_json():
-    """导出数据库项目和菜单结构为 JSON"""
+@bp.route("/template/history/csv")
+def download_history_template_csv():
+    """下载历史月度数据模板 (CSV 长表)
+
+    表头: year,month,type,owner,name,value,note
+    每行一条月度记录, 填好后通过 /import/csv 上传, 系统按表头自动识别为历史数据。
+    """
+    rows = [
+        {"year": 2024, "month": 1, "type": "收入", "owner": "家庭",
+         "name": "工资", "value": 15000.00, "note": "1月工资"},
+        {"year": 2024, "month": 1, "type": "支出", "owner": "家庭",
+         "name": "餐饮", "value": 3200.50, "note": ""},
+        {"year": 2024, "month": 1, "type": "结余", "owner": "家庭",
+         "name": "现金结余", "value": 50000.00, "note": "月末"},
+        {"year": 2024, "month": 2, "type": "收入", "owner": "家庭",
+         "name": "工资", "value": 15000.00, "note": ""},
+        {"year": 2024, "month": 2, "type": "支出", "owner": "家庭",
+         "name": "房租房贷", "value": 4500.00, "note": ""},
+        {"year": 2024, "month": 2, "type": "支出", "owner": "家庭",
+         "name": "餐饮", "value": 2850.00, "note": ""},
+        {"year": 2024, "month": 2, "type": "结余", "owner": "家庭",
+         "name": "现金结余", "value": 52649.50, "note": ""},
+    ]
+    buf = _write_csv(rows, ["year", "month", "type", "owner",
+                            "name", "value", "note"])
+    return send_file(
+        buf, mimetype="text/csv", as_attachment=True,
+        download_name="history_template.csv",
+    )
+
+
+# -------------------------------------------------------------- CSV 导出
+@bp.route("/export/items/csv")
+def export_items_csv():
+    """导出账户条目结构为 CSV
+
+    表头: name,type,owner,note,sort_order,is_active
+    """
     items = db.session.execute(
         select(AccountItem).order_by(AccountItem.type, AccountItem.sort_order)
     ).scalars().all()
-    menus_all = db.session.execute(
-        select(MenuItem).order_by(MenuItem.sort_order, MenuItem.id)
-    ).scalars().all()
-    users = db.session.execute(
-        select(User).order_by(User.sort_order)
-    ).scalars().all()
-    settings_all = db.session.execute(
-        select(Setting).order_by(Setting.key)
-    ).scalars().all()
-
-    data = {
-        "export_time": datetime.now().isoformat(),
-        "version": "2.0",
-        "account_items": [
-            {"name": it.name, "type": it.type, "owner": it.owner,
-             "note": it.note or "", "sort_order": it.sort_order,
-             "is_active": it.is_active}
-            for it in items
-        ],
-        "menu_items": [
-            {"name": m.name, "parent_id": m.parent_id,
-             "filter_type": m.filter_type or "",
-             "filter_owner": m.filter_owner or "",
-             "sort_order": m.sort_order, "is_active": m.is_active}
-            for m in menus_all
-        ],
-        "users": [
-            {"name": u.name, "is_default": u.is_default,
-             "sort_order": u.sort_order}
-            for u in users
-        ],
-        "settings": [
-            {"key": s.key, "value": s.value, "vtype": s.vtype}
-            for s in settings_all
-        ],
-    }
-    buf = io.BytesIO()
-    buf.write(json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
-    buf.seek(0)
+    rows = [
+        {"name": it.name, "type": it.type, "owner": it.owner,
+         "note": it.note or "", "sort_order": it.sort_order,
+         "is_active": "true" if it.is_active else "false"}
+        for it in items
+    ]
+    buf = _write_csv(rows, ["name", "type", "owner", "note",
+                            "sort_order", "is_active"])
     return send_file(
-        buf, mimetype="application/json", as_attachment=True,
-        download_name=f"family_budget_export_{datetime.now().strftime('%Y%m%d')}.json",
+        buf, mimetype="text/csv", as_attachment=True,
+        download_name=f"account_items_{datetime.now().strftime('%Y%m%d')}.csv",
     )
 
 
-# -------------------------------------------------------------- JSON 导入
-@bp.route("/import/json", methods=["POST"])
-def import_json():
-    """导入 JSON (菜单结构 + 账户条目 + 用户 + 配置)"""
-    file = request.files.get("json_file")
-    if not file or not file.filename:
-        return _done(False, "请选择 JSON 文件")
-    try:
-        raw = file.read().decode("utf-8-sig")
-        data = json.loads(raw)
-    except Exception as e:
-        return _done(False, f"JSON 解析失败: {e}")
+@bp.route("/export/history/csv")
+def export_history_csv():
+    """导出历史月度数据为 CSV (长表)
 
-    mode = request.form.get("import_mode", "merge")
-    added_items = added_menus = added_users = 0
-
-    if mode == "replace":
-        db.session.query(Asset).delete()
-        db.session.query(AccountItem).delete()
-        db.session.query(MenuItem).delete()
-        db.session.commit()
-
-    # 用户
-    for u in data.get("users", []):
-        existing = db.session.execute(
-            select(User).where(User.name == u["name"])
-        ).scalars().first()
-        if existing:
-            if mode == "replace":
-                existing.is_default = u.get("is_default", False)
-                existing.sort_order = u.get("sort_order", 0)
-        else:
-            db.session.add(User(
-                name=u["name"], is_default=u.get("is_default", False),
-                sort_order=u.get("sort_order", 0),
-            ))
-            added_users += 1
-
-    # 账户条目
-    for it in data.get("account_items", []):
-        existing = db.session.execute(
-            select(AccountItem).where(
-                AccountItem.name == it["name"],
-                AccountItem.type == it["type"],
-                AccountItem.owner == it["owner"],
-            )
-        ).scalars().first()
-        if existing:
-            if mode == "replace":
-                existing.note = it.get("note", "")
-                existing.sort_order = it.get("sort_order", 0)
-                existing.is_active = it.get("is_active", True)
-        else:
-            db.session.add(AccountItem(
-                name=it["name"], type=it["type"], owner=it["owner"],
-                note=it.get("note", ""), sort_order=it.get("sort_order", 0),
-                is_active=it.get("is_active", True),
-            ))
-            added_items += 1
-
-    # 菜单项 (需要处理 parent_id 映射)
-    old_to_new: dict[int, int] = {}
-    for m in data.get("menu_items", []):
-        old_parent = m.get("parent_id")
-        new_parent = old_to_new.get(old_parent) if old_parent else None
-        mi = MenuItem(
-            name=m["name"], parent_id=new_parent,
-            filter_type=m.get("filter_type", ""),
-            filter_owner=m.get("filter_owner", ""),
-            sort_order=m.get("sort_order", 0),
-            is_active=m.get("is_active", True),
-        )
-        db.session.add(mi)
-        db.session.flush()
-        old_to_new[m.get("id", mi.id)] = mi.id
-        added_menus += 1
-
-    # 配置项
-    for s in data.get("settings", []):
-        existing = db.session.execute(
-            select(Setting).where(Setting.key == s["key"])
-        ).scalars().first()
-        if existing:
-            existing.value = s["value"]
-            existing.vtype = s.get("vtype", "str")
-        else:
-            db.session.add(Setting(
-                key=s["key"], value=s["value"],
-                vtype=s.get("vtype", "str"),
-            ))
-
-    db.session.commit()
-    return _done(
-        True,
-        f"导入完成: 条目 +{added_items}, 菜单 +{added_menus}, 用户 +{added_users}",
-        ("menus", "items", "users", "formula", "sysinfo"),
+    表头: year,month,type,owner,name,value,note
+    """
+    asset_rows = db.session.execute(
+        select(Asset, AccountItem).join(
+            AccountItem, Asset.account_item_id == AccountItem.id
+        ).order_by(Asset.year, Asset.month, AccountItem.type)
+    ).all()
+    rows = [
+        {"year": a.year, "month": a.month,
+         "type": it.type, "owner": it.owner, "name": it.name,
+         "value": float(a.value), "note": a.note or ""}
+        for a, it in asset_rows
+    ]
+    buf = _write_csv(rows, ["year", "month", "type", "owner",
+                            "name", "value", "note"])
+    return send_file(
+        buf, mimetype="text/csv", as_attachment=True,
+        download_name=f"history_data_{datetime.now().strftime('%Y%m%d')}.csv",
     )
 
 
-# -------------------------------------------------------------- 数据导入 (CSV)
+# -------------------------------------------------------------- CSV 导入
 @bp.route("/import/csv", methods=["POST"])
 def import_csv():
-    """从 CSV 批量导入账户条目"""
+    """导入 CSV — 按表头自动识别两种结构
+
+    1) 表头含 year,month,value -> 历史月度数据 (长表, 自动找/建 AccountItem, upsert Asset)
+    2) 表头含 name,type (无 year/month) -> 账户条目结构
+
+    mode: merge (跳过已存在) / upsert (覆盖已存在)
+    """
     file = request.files.get("csv_file")
     if not file or not file.filename:
         return _done(False, "请选择 CSV 文件")
     try:
         raw = file.read().decode("utf-8-sig")
         reader = csv.DictReader(io.StringIO(raw))
+        fieldnames = reader.fieldnames or []
+        records = [dict(r) for r in reader]
     except Exception as e:
         return _done(False, f"CSV 解析失败: {e}")
 
-    added, skipped = 0, 0
+    if not records:
+        return _done(False, "CSV 无数据行")
+
+    mode = request.form.get("import_mode", "merge")
+    uid = g.current_user.id
+
+    # ---- 表头识别 ----
+    has_ym = "year" in fieldnames and "month" in fieldnames
+    has_nt = "name" in fieldnames and "type" in fieldnames
+    if has_ym and "value" in fieldnames:
+        st = _upsert_assets(records, mode, uid)
+        db.session.commit()
+        msg = (f"历史数据导入完成: 新增条目 {st['items']} 个, "
+               f"新增记录 {st['added']} 条, 更新 {st['updated']} 条")
+        if st["skipped"]:
+            msg += f", 跳过 {st['skipped']} 条"
+        return _done(True, msg, ("items", "formula", "sysinfo"))
+    if has_nt:
+        added, skipped = _upsert_items(records, mode)
+        db.session.commit()
+        msg = f"条目结构导入完成: 新增 {added} 条"
+        if skipped:
+            msg += f", 跳过 {skipped} 条"
+        return _done(True, msg, ("items", "formula", "sysinfo"))
+    return _done(False, "无法识别的 CSV 表头 (需含 name,type 或 year,month,value)")
+
+
+def _to_int(v, default=0):
+    try:
+        return int(str(v).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_float(v, default=0.0):
+    try:
+        return float(str(v).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_bool(v, default=True):
+    s = str(v).strip().lower()
+    if s in ("true", "1", "yes", "y", "是"):
+        return True
+    if s in ("false", "0", "no", "n", "否"):
+        return False
+    return default
+
+
+def _upsert_items(records, mode):
+    """条目结构 upsert: merge=跳过已存在, upsert=覆盖已存在。返回 (新增, 跳过)"""
+    added = skipped = 0
     max_order = db.session.execute(
         select(func.max(AccountItem.sort_order))
     ).scalar() or 0
-
-    for row in reader:
-        name = (row.get("名称") or row.get("name") or "").strip()
-        itype = (row.get("类型") or row.get("type") or "").strip()
-        owner = (row.get("属主") or row.get("owner") or "家庭").strip()
-        note = (row.get("备注") or row.get("note") or "").strip()
+    for it in records:
+        name = str(it.get("name") or "").strip()
+        itype = str(it.get("type") or "").strip()
+        owner = str(it.get("owner") or "家庭").strip()
         if not name or not itype:
             continue
         existing = db.session.execute(
@@ -697,80 +702,51 @@ def import_csv():
             )
         ).scalars().first()
         if existing:
-            skipped += 1
+            if mode == "upsert":
+                existing.note = str(it.get("note") or existing.note or "")
+                existing.sort_order = _to_int(it.get("sort_order"),
+                                               existing.sort_order)
+                existing.is_active = _to_bool(it.get("is_active"),
+                                               existing.is_active)
+            else:
+                skipped += 1
             continue
         max_order += 1
         db.session.add(AccountItem(
-            name=name, type=itype, owner=owner, note=note,
-            sort_order=max_order, is_active=True,
+            name=name, type=itype, owner=owner,
+            note=str(it.get("note") or ""),
+            sort_order=_to_int(it.get("sort_order"), max_order),
+            is_active=_to_bool(it.get("is_active"), True),
         ))
         added += 1
-    db.session.commit()
-    return _done(
-        True, f"CSV 导入: 新增 {added} 条, 跳过 {skipped} 条(已存在)",
-        ("items", "formula", "sysinfo"),
-    )
+    return added, skipped
 
 
-# -------------------------------------------------------------- 历史数据导入 (CSV)
-@bp.route("/import/history", methods=["POST"])
-def import_history():
-    """从 CSV 批量导入历史月度数据 (Asset 价值)
-
-    CSV 表头(长表, 每行一条月度记录):
-        年份,月份,类型,属主,条目名称,金额,备注
-
-    逻辑:
-      1. 按 (名称+类型+属主) 找或创建 AccountItem (条目模板)
-      2. 按 (年+月+条目+当前用户) upsert Asset (月度记录)
-      - merge  : 已存在的 Asset 跳过 (不覆盖, 安全)
-      - upsert : 已存在的 Asset 用新值覆盖
-    """
-    file = request.files.get("history_file")
-    if not file or not file.filename:
-        return _done(False, "请选择 CSV 文件")
-    try:
-        raw = file.read().decode("utf-8-sig")
-        reader = csv.DictReader(io.StringIO(raw))
-    except Exception as e:
-        return _done(False, f"CSV 解析失败: {e}")
-
-    uid = g.current_user.id
-    mode = request.form.get("import_mode", "merge")  # merge / upsert
-
+def _upsert_assets(records, mode, uid):
+    """历史月度数据 upsert: merge=跳过已存在, upsert=覆盖。
+    返回 {items, added, updated, skipped}"""
     added_items = added_assets = updated_assets = skipped = 0
     max_order = db.session.execute(
         select(func.max(AccountItem.sort_order))
     ).scalar() or 0
-
-    for row in reader:
-        name = (row.get("条目名称") or row.get("name") or "").strip()
-        itype = (row.get("类型") or row.get("type") or "").strip()
-        owner = (row.get("属主") or row.get("owner") or "家庭").strip()
-        year_s = (row.get("年份") or row.get("year") or "").strip()
-        month_s = (row.get("月份") or row.get("month") or "").strip()
-        val_raw = (row.get("金额") or row.get("value") or "").strip()
-        note = (row.get("备注") or row.get("note") or "").strip()
-
-        if not name or not itype or not owner or not year_s or not month_s:
+    for r in records:
+        name = str(r.get("name") or "").strip()
+        itype = str(r.get("type") or "").strip()
+        owner = str(r.get("owner") or "家庭").strip()
+        year_i = _to_int(r.get("year"), 0)
+        month_i = _to_int(r.get("month"), 0)
+        if not (1 <= month_i <= 12) or year_i <= 0:
             skipped += 1
             continue
-        try:
-            year_i = int(year_s)
-            month_i = int(month_s)
-            if not (1 <= month_i <= 12):
-                skipped += 1
-                continue
-        except ValueError:
+        val = _to_float(r.get("value"), None)
+        if val is None:
             skipped += 1
             continue
-        try:
-            val = float(val_raw)
-        except ValueError:
+        note = str(r.get("note") or "")
+        if not name or not itype:
             skipped += 1
             continue
-
-        # 1. 找或创建 AccountItem (名称+类型+属主 唯一)
+        # 找/建 AccountItem
         item = db.session.execute(
             select(AccountItem).where(
                 AccountItem.name == name,
@@ -781,14 +757,13 @@ def import_history():
         if not item:
             max_order += 1
             item = AccountItem(
-                name=name, type=itype, owner=owner, note="历史导入",
+                name=name, type=itype, owner=owner, note="导入",
                 sort_order=max_order, is_active=True,
             )
             db.session.add(item)
             db.session.flush()
             added_items += 1
-
-        # 2. upsert Asset (年+月+条目+用户 唯一)
+        # upsert Asset
         asset = db.session.execute(
             select(Asset).where(
                 Asset.year == year_i, Asset.month == month_i,
@@ -809,12 +784,8 @@ def import_history():
                 user_id=uid, value=val, note=note, source="import",
             ))
             added_assets += 1
+    return {"items": added_items, "added": added_assets,
+            "updated": updated_assets, "skipped": skipped}
 
-    db.session.commit()
-    return _done(
-        True,
-        f"历史数据导入完成: 新增条目 {added_items} 个, "
-        f"新增记录 {added_assets} 条, 更新 {updated_assets} 条"
-        f"{f', 跳过 {skipped} 条' if skipped else ''}",
-        ("items", "formula", "sysinfo"),
-    )
+
+# JSON 导入导出路由已移除 — 统一走 /import/csv (按表头自动识别 条目结构 / 历史数据)
