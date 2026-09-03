@@ -745,15 +745,21 @@ def import_csv():
 
 
 def _to_int(v, default=0):
+    # 去除千分位逗号 (如 "1,234" -> 1234), 兼容负数
+    s = str(v).strip().replace(",", "")
     try:
-        return int(str(v).strip())
+        return int(s)
     except (TypeError, ValueError):
         return default
 
 
 def _to_float(v, default=0.0):
+    # 去除千分位逗号 (如 "14,879.37" -> 14879.37, "-8,502.24" -> -8502.24)
+    s = str(v).strip().replace(",", "")
+    if s == "":
+        return default
     try:
-        return float(str(v).strip())
+        return float(s)
     except (TypeError, ValueError):
         return default
 
