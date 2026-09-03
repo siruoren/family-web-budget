@@ -481,3 +481,40 @@ input:disabled.table-input { background: #f3f4f6; cursor: not-allowed; opacity: 
 }
 .chip-formula:hover { background: var(--primary); color: #fff; }
 #formula-input { font-family: ui-monospace, "Cascadia Code", Menlo, monospace; }
+
+/* ===== 系统配置 AJAX 无刷新: toast + 加载态 ===== */
+.settings-toast-box {
+  position: fixed; right: 1.2rem; bottom: 1.2rem; z-index: 9999;
+  display: flex; flex-direction: column; gap: .5rem;
+  max-width: min(26rem, 90vw); pointer-events: none;
+}
+.settings-toast {
+  pointer-events: auto;
+  padding: .7rem 1rem; border-radius: .55rem;
+  font-size: .92rem; line-height: 1.4;
+  color: #fff; background: #0f766e;
+  box-shadow: 0 8px 28px rgba(0,0,0,.18);
+  opacity: 0; transform: translateY(12px);
+  transition: opacity .25s ease, transform .25s ease;
+  border-left: 4px solid rgba(255,255,255,.6);
+}
+.settings-toast.is-error { background: #b91c1c; }
+.settings-toast.is-ok { background: #047857; }
+.settings-toast.show { opacity: 1; transform: translateY(0); }
+
+/* 按钮加载态 */
+button.btn-loading {
+  position: relative; color: transparent !important;
+  pointer-events: none;
+}
+button.btn-loading::after {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: .9rem; height: .9rem; margin: -.45rem 0 0 -.45rem;
+  border: 2px solid rgba(255,255,255,.55); border-top-color: #fff;
+  border-radius: 50%; animation: btnspin .6s linear infinite;
+}
+@keyframes btnspin { to { transform: rotate(360deg); } }
+
+/* 分片替换时的轻微高亮反馈 (可选, 增强感知) */
+section[data-section] { transition: box-shadow .3s ease; }
+section[data-section].flash-sec { box-shadow: 0 0 0 2px var(--primary, #2563eb) inset; }

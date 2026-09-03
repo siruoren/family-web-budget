@@ -1,0 +1,32 @@
+{# 公式配置分片 - AJAX 替换整段; 类型列表通过 data-all-types 暴露给 JS #}
+<section id="formula" class="card" data-section="formula" data-all-types="{{ all_types|tojson }}">
+  <div class="card-hd">资产计算公式 <span class="muted">点击输入框可选择账目类型; 手动输入的类型若在全部账目类型中不存在将提示有误</span></div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('settings.update_formula') }}" class="formula-form" id="formula-form"
+          data-api="1" data-validate-formula="1">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="formula" id="formula-input"
+             value="{{ formula }}" size="52" list="formula-type-list"
+             placeholder="如: 上月结余+当月收入-当月结余=支出" autocomplete="off">
+      <datalist id="formula-type-list">
+        {% for t in all_types %}<option value="{{ t }}">{% endfor %}
+      </datalist>
+      <button class="btn btn-sm btn-primary">保存公式</button>
+    </form>
+
+    <div class="formula-chips">
+      <span class="muted">类型:</span>
+      {% for t in all_types %}
+      <button type="button" class="chip chip-formula" data-insert="{{ t }}">{{ t }}</button>
+      {% endfor %}
+      <span class="muted" style="margin-left:1rem">前缀:</span>
+      <button type="button" class="chip chip-formula" data-insert="上月">上月</button>
+      <button type="button" class="chip chip-formula" data-insert="当月">当月</button>
+      <span class="muted" style="margin-left:1rem">运算:</span>
+      <button type="button" class="chip chip-formula" data-insert="+">+</button>
+      <button type="button" class="chip chip-formula" data-insert="-">-</button>
+      <button type="button" class="chip chip-formula" data-insert="=">=</button>
+    </div>
+    <p class="muted">默认: 上月结余+当月收入-当月结余=支出; 若支出条目合计≠公式结果, 差额计入"支出(其他)"</p>
+  </div>
+</section>

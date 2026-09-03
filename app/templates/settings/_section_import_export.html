@@ -1,0 +1,57 @@
+{# 导入导出分片 - AJAX 替换整段 #}
+<section id="import-export" class="card" data-section="import-export">
+  <div class="card-hd">导入导出 <span class="muted">模板下载 / CSV 导入 / JSON 全量导出导入</span></div>
+  <div class="card-body">
+    <div class="io-grid">
+      <div class="io-block">
+        <h4>模板下载</h4>
+        <p class="muted">下载 CSV 模板, 填写后批量导入条目</p>
+        <a class="btn btn-sm btn-primary" href="{{ url_for('settings.download_template') }}">下载模板</a>
+      </div>
+
+      <div class="io-block">
+        <h4>CSV 导入条目</h4>
+        <form method="post" action="{{ url_for('settings.import_csv') }}" enctype="multipart/form-data" data-api="1">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="file" name="csv_file" accept=".csv" required>
+          <button class="btn btn-sm btn-primary">上传导入</button>
+        </form>
+      </div>
+
+      <div class="io-block">
+        <h4>JSON 导出 (全量)</h4>
+        <p class="muted">导出条目 + 菜单结构 + 用户 + 配置</p>
+        <a class="btn btn-sm" href="{{ url_for('settings.export_json') }}">导出 JSON</a>
+      </div>
+
+      <div class="io-block">
+        <h4>历史数据导入 (CSV)</h4>
+        <p class="muted">导入历史月度收支; 表头: 年份,月份,类型,属主,条目名称,金额,备注</p>
+        <form method="post" action="{{ url_for('settings.import_history') }}" enctype="multipart/form-data"
+              data-api="1" data-confirm="确认导入历史数据?">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="file" name="history_file" accept=".csv" required>
+          <select name="import_mode">
+            <option value="merge">合并 (跳过已存在)</option>
+            <option value="upsert">覆盖 (更新已存在)</option>
+          </select>
+          <button class="btn btn-sm btn-primary">上传导入</button>
+        </form>
+      </div>
+
+      <div class="io-block">
+        <h4>JSON 导入</h4>
+        <form method="post" action="{{ url_for('settings.import_json') }}" enctype="multipart/form-data"
+              data-api="1" data-confirm="确认导入?">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="file" name="json_file" accept=".json" required>
+          <select name="import_mode">
+            <option value="merge">合并 (跳过已存在)</option>
+            <option value="replace">替换 (清空后导入)</option>
+          </select>
+          <button class="btn btn-sm btn-primary">导入</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>

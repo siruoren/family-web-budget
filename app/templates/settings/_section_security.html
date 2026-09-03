@@ -1,0 +1,31 @@
+{# 安全设置分片 - AJAX 替换整段 #}
+<section id="security" class="card" data-section="security">
+  <div class="card-hd">安全设置 <span class="muted">管理员门禁 / 用户密码 / 数据加密</span></div>
+  <div class="card-body">
+    <table class="kv-table">
+      <tr><td>管理员密码</td>
+        <td>
+          {% if security.admin_password_configured %}
+            <span class="badge badge-ok">已配置 (config.yml)</span>
+          {% else %}
+            <span class="badge badge-danger">未配置</span>
+            <span class="muted">在 config.yml 的 security.admin_password 设置后重启生效</span>
+          {% endif %}
+        </td></tr>
+      <tr><td>当前会话</td>
+        <td>
+          {% if security.admin_password_configured and not is_admin_unlocked() %}<span class="badge badge-danger">管理员未解锁</span>{% else %}<span class="badge badge-ok">已解锁</span>{% endif %}
+        </td></tr>
+      <tr><td>数据加密</td>
+        <td>
+          资产金额 / 备注以应用层混淆加密存储 (enc:v1: 前缀); 旧明文数据自动兼容读取
+        </td></tr>
+      <tr><td>用户解锁</td><td>首次输入用户密码后, 解锁密钥以持久 Cookie 保存 {{ 30 }} 天 (httpOnly)</td></tr>
+      <tr><td>当前用户密码</td>
+        <td>{{ '已设置' if current_user.password_hash else '未设置 (不门禁, 建议在用户管理中设置)' }}</td></tr>
+    </table>
+    <div class="actions-row">
+      <a class="btn btn-sm" href="{{ url_for('auth.logout') }}">锁定当前会话 (下次访问需重新验证)</a>
+    </div>
+  </div>
+</section>

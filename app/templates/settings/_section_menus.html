@@ -1,0 +1,59 @@
+{# 菜单管理分片 - 服务端渲染, AJAX 替换整段 #}
+<section id="menus" class="card" data-section="menus">
+  <div class="card-hd">菜单管理 <span class="muted">左侧菜单支持多层级; 筛选类型/属主决定点击后显示哪些条目</span></div>
+  <div class="card-body">
+    <form class="inline-form" method="post" action="{{ url_for('settings.menu_add') }}"
+          data-api="1">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="name" placeholder="菜单名称" required maxlength="64">
+      <input type="text" name="filter_type" placeholder="筛选类型(如 收入)" style="width:10rem">
+      <input type="text" name="filter_owner" placeholder="筛选属主(如 家庭)" style="width:10rem">
+      <input type="number" name="sort_order" value="0" style="width:4rem" title="排序">
+      <button class="btn btn-sm btn-primary">添加菜单</button>
+    </form>
+
+    <table class="data-table menu-table">
+      <thead><tr><th>#</th><th>名称</th><th>筛选类型</th><th>筛选属主</th><th>排序</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody>
+      {% macro menu_rows(nodes, depth=0) %}
+      {% for m in nodes %}
+      <tr class="menu-row depth-{{ depth }}">
+        <td>{{ m.id }}</td>
+        <td>{{ '　' * depth }}{{ '├ ' if depth > 0 }}{{ m.name }}</td>
+        <td>{{ m.filter_type or '—' }}</td>
+        <td>{{ m.filter_owner or '—' }}</td>
+        <td>{{ m.sort_order }}</td>
+        <td>{{ '启用' if m.is_active else '停用' }}</td>
+        <td class="actions">
+          <details class="inline-edit"><summary class="btn btn-sm">编辑</summary>
+            <form method="post" action="{{ url_for('settings.menu_edit', menu_id=m.id) }}"
+                  class="edit-pop" data-api="1">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="name" value="{{ m.name }}" required>
+              <input type="text" name="filter_type" value="{{ m.filter_type }}" placeholder="筛选类型(如 收入)">
+              <input type="text" name="filter_owner" value="{{ m.filter_owner }}" placeholder="筛选属主(如 家庭)">
+              <input type="number" name="sort_order" value="{{ m.sort_order }}" style="width:5rem">
+              <label class="cb"><input type="checkbox" name="is_active" {{ 'checked' if m.is_active }}> 启用</label>
+              <button class="btn btn-sm btn-primary">保存</button>
+            </form>
+          </details>
+          <form method="post" action="{{ url_for('settings.menu_delete', menu_id=m.id) }}"
+                data-api="1" data-confirm="删除菜单 {{ m.name }} 及其子菜单?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-danger">删除</button>
+          </form>
+        </td>
+      </tr>
+      {% if m.children %}
+      {{ menu_rows(m.children, depth+1) }}
+      {% endif %}
+      {% endfor %}
+      {% endmacro %}
+      {{ menu_rows(menu_tree) }}
+      {% if not menu_tree %}
+      <tr><td colspan="7" class="empty-row">暂无菜单</td></tr>
+      {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>

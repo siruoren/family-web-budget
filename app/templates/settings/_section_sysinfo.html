@@ -1,0 +1,21 @@
+{# 系统信息分片 - AJAX 替换整段; 删改后刷新计数与库大小 #}
+<section id="sysinfo" class="card" data-section="sysinfo">
+  <div class="card-hd">系统信息</div>
+  <div class="card-body">
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-label">用户数</div><div class="stat-value">{{ stats.users }}</div></div>
+      <div class="stat-card"><div class="stat-label">条目数</div><div class="stat-value">{{ stats.items }}</div></div>
+      <div class="stat-card"><div class="stat-label">资产记录</div><div class="stat-value">{{ stats.assets }}</div></div>
+      <div class="stat-card"><div class="stat-label">活跃锁</div><div class="stat-value">{{ stats.active_locks }}</div></div>
+    </div>
+    <table class="kv-table">
+      <tr><td>应用版本</td><td>{{ sys_info.app_version }}</td></tr>
+      <tr><td>Python</td><td>{{ sys_info.python }}</td></tr>
+      <tr><td>平台</td><td>{{ sys_info.platform }}</td></tr>
+      <tr><td>调试模式</td><td>{{ '开启' if sys_info.flask_debug else '关闭' }}</td></tr>
+      <tr><td>数据库路径</td><td>{{ sys_info.db_path }}</td></tr>
+      <tr><td>数据库大小</td><td>{{ sys_info.db_size_kb }} KB</td></tr>
+      <tr><td>当前时间</td><td>{{ sys_info.now }}</td></tr>
+    </table>
+  </div>
+</section>

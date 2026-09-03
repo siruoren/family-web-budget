@@ -30,12 +30,28 @@ def _app_version() -> str:
     return getattr(current_app, "version", "2.0.0")
 
 
-@bp.route("/")
-def index():
-    """系统配置首页"""
-    uid = g.current_user.id
+# -------------------------------------------------------------- AJAX 分片渲染
+# 每个 section 名 -> 分片模板路径; AJAX 操作后只返回受影响的分片 HTML
+_SECTION_PARTIAL = {
+    "menus": "settings/_section_menus.html",
+    "items": "settings/_section_items.html",
+    "users": "settings/_section_users.html",
+    "import-export": "settings/_section_import_export.html",
+    "formula": "settings/_section_formula.html",
+    "security": "settings/_section_security.html",
+    "locks": "settings/_section_locks.html",
+    "sysinfo": "settings/_section_sysinfo.html",
+}
 
-    # ---- 系统信息 ----
+
+def _is_ajax() -> bool:
+    """是否为 AJAX 请求 (fetch 带 X-Requested-With 头)"""
+    return request.headers.get("X-Requested-With") == "XMLHttpRequest" \
+        or request.args.get("json") == "1"
+
+
+def _ctx() -> dict:
+    """构建设置页完整上下文 (首页渲染与 AJAX 分片复用)"""
     db_uri = current_app.config.get("SQLALCHEMY_DATABASE_URI", "")
     db_path = db_uri.replace("sqlite:///", "") if db_uri.startswith("sqlite") else db_uri
     stats = {
@@ -50,49 +66,63 @@ def index():
         "flask_debug": current_app.config.get("DEBUG", False),
         "db_path": db_path,
         "db_exists": os.path.exists(db_path) if db_path else False,
-        "db_size_kb": round(os.path.getsize(db_path) / 1024, 1) if db_path and os.path.exists(db_path) else 0,
+        "db_size_kb": round(os.path.getsize(db_path) / 1024, 1)
+        if db_path and os.path.exists(db_path) else 0,
         "app_version": _app_version(),
         "now": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
-
-    # ---- 用户列表 ----
     users = db.session.execute(
         select(User).order_by(User.sort_order, User.id)
     ).scalars().all()
-
-    # ---- 账户条目列表 ----
     items = db.session.execute(
-        select(AccountItem).order_by(AccountItem.type, AccountItem.sort_order, AccountItem.id)
+        select(AccountItem).order_by(
+            AccountItem.type, AccountItem.sort_order, AccountItem.id
+        )
     ).scalars().all()
-
-    # ---- 锁配置 ----
     lock_config = {
         "enabled": is_lock_enabled(),
         "ttl": get_lock_ttl(),
         "heartbeat_interval": get_setting("heartbeat_interval", 60),
         "sync_interval": get_setting("sync_interval", 30),
     }
+    return {
+        "stats": stats, "sys_info": sys_info,
+        "users": users, "items": items,
+        "menu_tree": _build_menu_tree(),
+        "lock_config": lock_config,
+        "active_locks": list_all_locks(),
+        "all_settings": db.session.execute(
+            select(Setting).order_by(Setting.key)
+        ).scalars().all(),
+        "formula": get_formula(), "all_types": get_all_types(),
+        "security": {"admin_password_configured": auth.admin_password_configured()},
+    }
 
-    # ---- 活跃锁 ----
-    active_locks = list_all_locks()
 
-    # ---- 全部配置项 ----
-    all_settings = db.session.execute(
-        select(Setting).order_by(Setting.key)
-    ).scalars().all()
+def _render_sections(ctx: dict, *names: str) -> dict:
+    """渲染指定分片为 {name: html}, 供前端 outerHTML 替换"""
+    return {
+        n: render_template(_SECTION_PARTIAL[n], **ctx)
+        for n in names if n in _SECTION_PARTIAL
+    }
 
-    # ---- 菜单树 ----
-    menu_tree = _build_menu_tree()
 
-    return render_template(
-        "settings/index.html",
-        stats=stats, sys_info=sys_info, lock_config=lock_config,
-        active_locks=active_locks, all_settings=all_settings,
-        users=users, items=items,
-        menu_tree=menu_tree,
-        formula=get_formula(), all_types=get_all_types(),
-        security={"admin_password_configured": auth.admin_password_configured()},
-    )
+def _done(ok: bool, msg: str, sections=()):
+    """统一收尾: AJAX 返回 JSON {ok,msg,sections}; 否则 flash + redirect"""
+    ctx = _ctx()
+    if _is_ajax():
+        return jsonify({
+            "ok": ok, "msg": msg,
+            "sections": _render_sections(ctx, *sections) if ok else {},
+        })
+    flash(msg, "success" if ok else "error")
+    return redirect(url_for("settings.index", uid=g.current_user.id))
+
+
+@bp.route("/")
+def index():
+    """系统配置首页"""
+    return render_template("settings/index.html", **_ctx())
 
 
 def _build_menu_tree() -> list:
@@ -137,20 +167,16 @@ def user_add():
     password = request.form.get("password", "")
     password2 = request.form.get("password2", "")
     if not name:
-        flash("用户名不能为空", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(False, "用户名不能为空")
     if len(password) < 4:
-        flash("密码至少 4 位", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(False, "密码至少 4 位")
     if password != password2:
-        flash("两次输入的密码不一致", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(False, "两次输入的密码不一致")
     existing = db.session.execute(
         select(User).where(User.name == name)
     ).scalars().first()
     if existing:
-        flash(f"用户 '{name}' 已存在", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(False, f"用户 '{name}' 已存在")
     max_order = db.session.execute(
         select(func.max(User.sort_order))
     ).scalar() or 0
@@ -160,14 +186,15 @@ def user_add():
         password_hash=auth.hash_password(password),
     )
     db.session.add(user)
-    # 如果设为默认, 取消其他默认
     if is_default:
         db.session.query(User).filter(User.id != user.id).update(
             {"is_default": False}
         )
     db.session.commit()
-    flash(f"已创建用户: {name} (已配置访问密码)", "success")
-    return redirect(url_for("settings.index", uid=g.current_user.id))
+    return _done(
+        True, f"已创建用户: {name} (已配置访问密码)",
+        ("users", "sysinfo", "security"),
+    )
 
 
 @bp.route("/users/<int:user_id>/password", methods=["POST"])
@@ -175,52 +202,49 @@ def user_set_password(user_id):
     """设置/修改用户访问密码 (创建用户时已配置, 此处用于改密或为旧用户补设)"""
     user = db.session.get(User, user_id)
     if not user:
-        flash("用户不存在", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(False, "用户不存在")
     password = request.form.get("password", "")
     password2 = request.form.get("password2", "")
     if len(password) < 4:
-        flash("密码至少 4 位", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(False, "密码至少 4 位")
     if password != password2:
-        flash("两次输入的密码不一致", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(False, "两次输入的密码不一致")
     user.password_hash = auth.hash_password(password)
     db.session.commit()
     # 若修改的是当前用户, 清除其解锁 cookie (下次访问需重新输入新密码)
     if g.current_user.id == user_id:
         auth.lock_user(user_id)
-    flash(f"已为用户 {user.name} 设置/更新访问密码", "success")
-    return redirect(url_for("settings.index", uid=g.current_user.id))
+    return _done(
+        True, f"已为用户 {user.name} 设置/更新访问密码",
+        ("users", "security"),
+    )
 
 
 @bp.route("/users/<int:user_id>/default", methods=["POST"])
 def user_set_default(user_id):
     user = db.session.get(User, user_id)
     if not user:
-        flash("用户不存在", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(False, "用户不存在")
     db.session.query(User).update({"is_default": False})
     user.is_default = True
     db.session.commit()
-    flash(f"已设置默认用户: {user.name}", "success")
-    return redirect(url_for("settings.index", uid=g.current_user.id))
+    return _done(True, f"已设置默认用户: {user.name}", ("users",))
 
 
 @bp.route("/users/<int:user_id>/delete", methods=["POST"])
 def user_delete(user_id):
     user = db.session.get(User, user_id)
     if not user:
-        flash("用户不存在", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(False, "用户不存在")
     if user.is_default:
-        flash("不能删除默认用户, 请先设置其他用户为默认", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(False, "不能删除默认用户, 请先设置其他用户为默认")
     name = user.name
     db.session.delete(user)
     db.session.commit()
-    flash(f"已删除用户: {name} (及其所有数据)", "success")
-    return redirect(url_for("settings.index", uid=g.current_user.id))
+    return _done(
+        True, f"已删除用户: {name} (及其所有数据)",
+        ("users", "sysinfo", "security"),
+    )
 
 
 # -------------------------------------------------------------- 账户条目管理
@@ -232,8 +256,7 @@ def item_add():
     owner = request.form.get("owner", "家庭").strip()
     note = request.form.get("note", "").strip()
     if not name or not item_type:
-        flash("名称和类型不能为空", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(False, "名称和类型不能为空")
     existing = db.session.execute(
         select(AccountItem).where(
             AccountItem.name == name,
@@ -242,8 +265,7 @@ def item_add():
         )
     ).scalars().first()
     if existing:
-        flash(f"条目已存在: {item_type}/{owner}/{name}", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(False, f"条目已存在: {item_type}/{owner}/{name}")
     max_order = db.session.execute(
         select(func.max(AccountItem.sort_order))
     ).scalar() or 0
@@ -252,8 +274,10 @@ def item_add():
         sort_order=max_order + 1,
     ))
     db.session.commit()
-    flash(f"已新增条目: {item_type}/{owner}/{name}", "success")
-    return redirect(url_for("settings.index", uid=g.current_user.id))
+    return _done(
+        True, f"已新增条目: {item_type}/{owner}/{name}",
+        ("items", "formula", "sysinfo"),
+    )
 
 
 @bp.route("/items/batch-add", methods=["POST"])
@@ -261,8 +285,7 @@ def item_batch_add():
     """批量新增条目 - 每行一条, 格式: 名称,类型,属主,备注"""
     raw = request.form.get("batch_text", "").strip()
     if not raw:
-        flash("批量内容不能为空", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(False, "批量内容不能为空")
     lines = raw.split("\n")
     added = 0
     skipped = 0
@@ -296,8 +319,10 @@ def item_batch_add():
         ))
         added += 1
     db.session.commit()
-    flash(f"批量新增: {added} 条新增, {skipped} 条跳过(已存在)", "success")
-    return redirect(url_for("settings.index", uid=g.current_user.id))
+    return _done(
+        True, f"批量新增: {added} 条新增, {skipped} 条跳过(已存在)",
+        ("items", "formula", "sysinfo"),
+    )
 
 
 @bp.route("/items/<int:item_id>/edit", methods=["POST"])
@@ -305,8 +330,7 @@ def item_edit(item_id):
     """编辑条目 (每个字段都可以调整)"""
     item = db.session.get(AccountItem, item_id)
     if not item:
-        flash("条目不存在", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(False, "条目不存在")
     name = request.form.get("name", "").strip()
     item_type = request.form.get("type", "").strip()
     owner = request.form.get("owner", "").strip()
@@ -314,8 +338,7 @@ def item_edit(item_id):
     is_active = request.form.get("is_active") == "on"
     sort_order = request.form.get("sort_order", item.sort_order, type=int)
     if not name or not item_type or not owner:
-        flash("名称、类型、属主不能为空", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(False, "名称、类型、属主不能为空")
     # 检查唯一约束
     if name != item.name or item_type != item.type or owner != item.owner:
         existing = db.session.execute(
@@ -327,8 +350,7 @@ def item_edit(item_id):
             )
         ).scalars().first()
         if existing:
-            flash(f"已存在相同条目: {item_type}/{owner}/{name}", "error")
-            return redirect(url_for("settings.index", uid=g.current_user.id))
+            return _done(False, f"已存在相同条目: {item_type}/{owner}/{name}")
     item.name = name
     item.type = item_type
     item.owner = owner
@@ -336,8 +358,10 @@ def item_edit(item_id):
     item.is_active = is_active
     item.sort_order = sort_order
     db.session.commit()
-    flash(f"已更新条目: {item_type}/{owner}/{name}", "success")
-    return redirect(url_for("settings.index", uid=g.current_user.id))
+    return _done(
+        True, f"已更新条目: {item_type}/{owner}/{name}",
+        ("items", "formula"),
+    )
 
 
 @bp.route("/items/<int:item_id>/delete", methods=["POST"])
@@ -345,13 +369,11 @@ def item_delete(item_id):
     """删除条目 (级联删除 Asset)"""
     item = db.session.get(AccountItem, item_id)
     if not item:
-        flash("条目不存在", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(False, "条目不存在")
     name = f"{item.type}/{item.owner}/{item.name}"
     db.session.delete(item)
     db.session.commit()
-    flash(f"已删除条目: {name}", "success")
-    return redirect(url_for("settings.index", uid=g.current_user.id))
+    return _done(True, f"已删除条目: {name}", ("items", "formula", "sysinfo"))
 
 
 # -------------------------------------------------------------- 公式配置
@@ -360,11 +382,9 @@ def update_formula():
     """更新资产计算公式"""
     expr = request.form.get("formula", "").strip()
     if not expr:
-        flash("公式不能为空", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(False, "公式不能为空")
     set_formula(expr)
-    flash(f"公式已更新: {expr}", "success")
-    return redirect(url_for("settings.index", uid=g.current_user.id))
+    return _done(True, f"公式已更新: {expr}", ("formula",))
 
 
 # -------------------------------------------------------------- 锁配置
@@ -377,11 +397,9 @@ def update_lock_config():
     try:
         ttl_val = int(ttl)
         if ttl_val < 10 or ttl_val > 3600:
-            flash("锁 TTL 需在 10~3600 秒之间", "error")
-            return redirect(url_for("settings.index", uid=g.current_user.id))
+            return _done(False, "锁 TTL 需在 10~3600 秒之间")
     except ValueError:
-        flash("锁 TTL 必须是整数", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(False, "锁 TTL 必须是整数")
     try:
         hb_val = max(5, int(heartbeat))
         sync_val = max(5, int(sync_iv))
@@ -391,12 +409,12 @@ def update_lock_config():
     set_setting("lock_ttl", ttl_val, "int")
     set_setting("heartbeat_interval", hb_val, "int")
     set_setting("sync_interval", sync_val, "int")
-    flash(
+    return _done(
+        True,
         f"并发锁配置已更新: TTL={ttl_val}s, "
         f"{'启用' if enabled else '已禁用'}",
-        "success",
+        ("locks",),
     )
-    return redirect(url_for("settings.index", uid=g.current_user.id))
 
 
 # -------------------------------------------------------------- 锁管理
@@ -404,28 +422,23 @@ def update_lock_config():
 def force_release_lock(lock_id):
     ok = force_release(lock_id)
     if ok:
-        flash(f"已强制释放锁 #{lock_id}", "success")
-    else:
-        flash(f"锁 #{lock_id} 不存在或已释放", "warning")
-    return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(True, f"已强制释放锁 #{lock_id}", ("locks", "sysinfo"))
+    return _done(False, f"锁 #{lock_id} 不存在或已释放")
 
 
 @bp.route("/locks/force-release-all", methods=["POST"])
 def force_release_all_locks():
     confirm = request.form.get("confirm", "").strip()
     if confirm != "确认清空":
-        flash("请输入 '确认清空' 以确认", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id))
+        return _done(False, "请输入 '确认清空' 以确认")
     count = force_release_all()
-    flash(f"已清空 {count} 个活跃锁", "success")
-    return redirect(url_for("settings.index", uid=g.current_user.id))
+    return _done(True, f"已清空 {count} 个活跃锁", ("locks", "sysinfo"))
 
 
 @bp.route("/locks/cleanup", methods=["POST"])
 def cleanup_expired_locks():
     count = cleanup_expired()
-    flash(f"已清理 {count} 个过期锁", "success")
-    return redirect(url_for("settings.index", uid=g.current_user.id))
+    return _done(True, f"已清理 {count} 个过期锁", ("locks", "sysinfo"))
 
 
 # -------------------------------------------------------------- 菜单管理
@@ -433,8 +446,7 @@ def cleanup_expired_locks():
 def menu_add():
     name = request.form.get("name", "").strip()
     if not name:
-        flash("菜单名称不能为空", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id) + "#menus")
+        return _done(False, "菜单名称不能为空")
     parent_id = request.form.get("parent_id", type=int)
     filter_type = request.form.get("filter_type", "").strip()
     filter_owner = request.form.get("filter_owner", "").strip()
@@ -446,24 +458,20 @@ def menu_add():
     )
     db.session.add(mi)
     db.session.commit()
-    flash(f"已添加菜单: {name}", "success")
-    return redirect(url_for("settings.index", uid=g.current_user.id) + "#menus")
+    return _done(True, f"已添加菜单: {name}", ("menus",))
 
 
 @bp.route("/menus/<int:menu_id>/edit", methods=["POST"])
 def menu_edit(menu_id):
     mi = db.session.get(MenuItem, menu_id)
     if not mi:
-        flash("菜单项不存在", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id) + "#menus")
+        return _done(False, "菜单项不存在")
     name = request.form.get("name", "").strip()
     if not name:
-        flash("菜单名称不能为空", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id) + "#menus")
+        return _done(False, "菜单名称不能为空")
     parent_id = request.form.get("parent_id", type=int)
     if parent_id == menu_id:
-        flash("不能将菜单设为自身的子菜单", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id) + "#menus")
+        return _done(False, "不能将菜单设为自身的子菜单")
     mi.name = name
     mi.parent_id = parent_id if parent_id else None
     mi.filter_type = request.form.get("filter_type", "").strip()
@@ -471,21 +479,18 @@ def menu_edit(menu_id):
     mi.sort_order = request.form.get("sort_order", 0, type=int)
     mi.is_active = request.form.get("is_active") == "on"
     db.session.commit()
-    flash(f"已更新菜单: {name}", "success")
-    return redirect(url_for("settings.index", uid=g.current_user.id) + "#menus")
+    return _done(True, f"已更新菜单: {name}", ("menus",))
 
 
 @bp.route("/menus/<int:menu_id>/delete", methods=["POST"])
 def menu_delete(menu_id):
     mi = db.session.get(MenuItem, menu_id)
     if not mi:
-        flash("菜单项不存在", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id) + "#menus")
+        return _done(False, "菜单项不存在")
     name = mi.name
     db.session.delete(mi)
     db.session.commit()
-    flash(f"已删除菜单: {name} (含子菜单)", "success")
-    return redirect(url_for("settings.index", uid=g.current_user.id) + "#menus")
+    return _done(True, f"已删除菜单: {name} (含子菜单)", ("menus",))
 
 
 # -------------------------------------------------------------- 模板下载
@@ -566,14 +571,12 @@ def import_json():
     """导入 JSON (菜单结构 + 账户条目 + 用户 + 配置)"""
     file = request.files.get("json_file")
     if not file or not file.filename:
-        flash("请选择 JSON 文件", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id) + "#import-export")
+        return _done(False, "请选择 JSON 文件")
     try:
         raw = file.read().decode("utf-8-sig")
         data = json.loads(raw)
     except Exception as e:
-        flash(f"JSON 解析失败: {e}", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id) + "#import-export")
+        return _done(False, f"JSON 解析失败: {e}")
 
     mode = request.form.get("import_mode", "merge")
     added_items = added_menus = added_users = 0
@@ -654,11 +657,11 @@ def import_json():
             ))
 
     db.session.commit()
-    flash(
+    return _done(
+        True,
         f"导入完成: 条目 +{added_items}, 菜单 +{added_menus}, 用户 +{added_users}",
-        "success",
+        ("menus", "items", "users", "formula", "sysinfo"),
     )
-    return redirect(url_for("settings.index", uid=g.current_user.id) + "#import-export")
 
 
 # -------------------------------------------------------------- 数据导入 (CSV)
@@ -667,14 +670,12 @@ def import_csv():
     """从 CSV 批量导入账户条目"""
     file = request.files.get("csv_file")
     if not file or not file.filename:
-        flash("请选择 CSV 文件", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id) + "#import-export")
+        return _done(False, "请选择 CSV 文件")
     try:
         raw = file.read().decode("utf-8-sig")
         reader = csv.DictReader(io.StringIO(raw))
     except Exception as e:
-        flash(f"CSV 解析失败: {e}", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id) + "#import-export")
+        return _done(False, f"CSV 解析失败: {e}")
 
     added, skipped = 0, 0
     max_order = db.session.execute(
@@ -705,8 +706,10 @@ def import_csv():
         ))
         added += 1
     db.session.commit()
-    flash(f"CSV 导入: 新增 {added} 条, 跳过 {skipped} 条(已存在)", "success")
-    return redirect(url_for("settings.index", uid=g.current_user.id) + "#import-export")
+    return _done(
+        True, f"CSV 导入: 新增 {added} 条, 跳过 {skipped} 条(已存在)",
+        ("items", "formula", "sysinfo"),
+    )
 
 
 # -------------------------------------------------------------- 历史数据导入 (CSV)
@@ -725,14 +728,12 @@ def import_history():
     """
     file = request.files.get("history_file")
     if not file or not file.filename:
-        flash("请选择 CSV 文件", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id) + "#import-export")
+        return _done(False, "请选择 CSV 文件")
     try:
         raw = file.read().decode("utf-8-sig")
         reader = csv.DictReader(io.StringIO(raw))
     except Exception as e:
-        flash(f"CSV 解析失败: {e}", "error")
-        return redirect(url_for("settings.index", uid=g.current_user.id) + "#import-export")
+        return _done(False, f"CSV 解析失败: {e}")
 
     uid = g.current_user.id
     mode = request.form.get("import_mode", "merge")  # merge / upsert
@@ -810,10 +811,10 @@ def import_history():
             added_assets += 1
 
     db.session.commit()
-    flash(
+    return _done(
+        True,
         f"历史数据导入完成: 新增条目 {added_items} 个, "
         f"新增记录 {added_assets} 条, 更新 {updated_assets} 条"
         f"{f', 跳过 {skipped} 条' if skipped else ''}",
-        "success",
+        ("items", "formula", "sysinfo"),
     )
-    return redirect(url_for("settings.index", uid=g.current_user.id) + "#import-export")

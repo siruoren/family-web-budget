@@ -1,0 +1,66 @@
+{# 账户条目管理分片 - AJAX 替换整段 #}
+<section id="items" class="card" data-section="items">
+  <div class="card-hd">账户条目 <span class="muted">名称+类型+属主 唯一; 每个字段均可编辑</span></div>
+  <div class="card-body">
+    <div class="grid-2col">
+      <form method="post" action="{{ url_for('settings.item_add') }}" data-api="1">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <h4>单个新增</h4>
+        <div class="form-row"><label>名称</label><input type="text" name="name" required></div>
+        <div class="form-row"><label>类型</label>
+          <input type="text" name="type" list="type-list" value="支出" required>
+          <datalist id="type-list">{% for t in all_types %}<option value="{{ t }}">{% endfor %}<option value="收入"><option value="支出"><option value="结余"></datalist>
+        </div>
+        <div class="form-row"><label>属主</label><input type="text" name="owner" value="家庭"></div>
+        <div class="form-row"><label>备注</label><input type="text" name="note"></div>
+        <button class="btn btn-sm btn-primary">新增条目</button>
+      </form>
+
+      <form method="post" action="{{ url_for('settings.item_batch_add') }}" data-api="1">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <h4>批量新增 <span class="muted">每行一条, 格式: 名称,类型,属主,备注</span></h4>
+        <textarea name="batch_text" rows="6" placeholder="工资,收入,家庭,月度工资&#10;餐饮,支出,家庭,日常饮食&#10;现金结余,结余,家庭,月末现金"></textarea>
+        <button class="btn btn-sm btn-primary">批量导入</button>
+      </form>
+    </div>
+
+    <table class="data-table">
+      <thead><tr><th>#</th><th>名称</th><th>类型</th><th>属主</th><th>备注</th><th>启用</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for it in items %}
+      <tr class="{{ 'row-inactive' if not it.is_active }}" data-item-id="{{ it.id }}">
+        <td>{{ it.id }}</td>
+        <td>{{ it.name }}</td>
+        <td><span class="chip">{{ it.type }}</span></td>
+        <td>{{ it.owner }}</td>
+        <td>{{ it.note or '' }}</td>
+        <td>{{ '启用' if it.is_active else '停用' }}</td>
+        <td class="actions">
+          <details class="inline-edit"><summary class="btn btn-sm">编辑</summary>
+            <form method="post" action="{{ url_for('settings.item_edit', item_id=it.id) }}"
+                  class="edit-pop" data-api="1">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="name" value="{{ it.name }}" required>
+              <input type="text" name="type" value="{{ it.type }}" required>
+              <input type="text" name="owner" value="{{ it.owner }}" required>
+              <input type="text" name="note" value="{{ it.note or '' }}">
+              <label class="cb"><input type="checkbox" name="is_active" {{ 'checked' if it.is_active }}> 启用</label>
+              <input type="number" name="sort_order" value="{{ it.sort_order }}" style="width:5rem">
+              <button class="btn btn-sm btn-primary">保存</button>
+            </form>
+          </details>
+          <form method="post" action="{{ url_for('settings.item_delete', item_id=it.id) }}"
+                data-api="1" data-confirm="删除条目 {{ it.name }} 将级联删除其所有月度数据, 确认?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-danger">删除</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not items %}
+      <tr><td colspan="7" class="empty-row">暂无条目</td></tr>
+      {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>

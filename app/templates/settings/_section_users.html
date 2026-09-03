@@ -1,0 +1,55 @@
+{# 用户管理分片 - AJAX 替换整段 #}
+<section id="users" class="card" data-section="users">
+  <div class="card-hd">用户管理 <span class="muted">点击切换见顶部下拉; 默认用户为打开页面时的默认身份; 创建用户需配置密码</span></div>
+  <div class="card-body">
+    <form class="inline-form" method="post" action="{{ url_for('settings.user_add') }}" data-api="1">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="name" placeholder="新用户名" required maxlength="32">
+      <input type="password" name="password" placeholder="用户密码" required minlength="4" title="该用户访问数据时需输入此密码">
+      <input type="password" name="password2" placeholder="确认密码" required minlength="4">
+      <label class="cb"><input type="checkbox" name="is_default"> 设为默认</label>
+      <button class="btn btn-sm btn-primary">添加用户</button>
+    </form>
+
+    <table class="data-table">
+      <thead><tr><th>ID</th><th>用户名</th><th>密码</th><th>默认</th><th>排序</th><th>创建时间</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for u in users %}
+      <tr class="{{ 'row-default' if u.is_default }}" data-user-id="{{ u.id }}">
+        <td>{{ u.id }}</td>
+        <td>{{ u.name }}</td>
+        <td>{{ '已设置' if u.password_hash else '<span class="chip chip-warn">未设置</span>' }}</td>
+        <td>{{ '✓ 默认' if u.is_default else '—' }}</td>
+        <td>{{ u.sort_order }}</td>
+        <td>{{ u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else '' }}</td>
+        <td class="actions">
+          <details class="inline-edit"><summary class="btn btn-sm">设置密码</summary>
+            <form method="post" action="{{ url_for('settings.user_set_password', user_id=u.id) }}"
+                  class="edit-pop" data-api="1">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="password" name="password" placeholder="新密码" required minlength="4">
+              <input type="password" name="password2" placeholder="确认新密码" required minlength="4">
+              <button class="btn btn-sm btn-primary">保存</button>
+            </form>
+          </details>
+          {% if not u.is_default %}
+          <form method="post" action="{{ url_for('settings.user_set_default', user_id=u.id) }}" data-api="1">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm">设默认</button>
+          </form>
+          <a class="btn btn-sm" href="{{ request.path }}?uid={{ u.id }}">切换</a>
+          <form method="post" action="{{ url_for('settings.user_delete', user_id=u.id) }}"
+                data-api="1" data-confirm="删除用户 {{ u.name }} 将清除其所有数据, 确认?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-danger">删除</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="empty-row">暂无用户</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
