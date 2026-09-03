@@ -8,12 +8,11 @@
 
 <form class="card period-range auto-submit" method="get" action="{{ url_for('analysis.index') }}">
   <input type="hidden" name="uid" value="{{ current_user_id }}">
-  <label>起 年<select name="yf">{% for y in range(current_year-5, current_year+1) %}<option value="{{ y }}" {{ 'selected' if y==yf }}>{{ y }}</option>{% endfor %}</select></label>
+  <label>起 <select name="yf" title="起始年">{% for y in available_years %}<option value="{{ y }}" {{ 'selected' if y==yf }}>{{ y }}</option>{% endfor %}</select></label>
   <label>月<select name="mf">{% for m in range(1,13) %}<option value="{{ m }}" {{ 'selected' if m==mf }}>{{ m }}</option>{% endfor %}</select></label>
   <span class="muted">至</span>
-  <label>年<select name="yt">{% for y in range(current_year-5, current_year+1) %}<option value="{{ y }}" {{ 'selected' if y==yt }}>{{ y }}</option>{% endfor %}</select></label>
+  <label><select name="yt" title="结束年">{% for y in available_years %}<option value="{{ y }}" {{ 'selected' if y==yt }}>{{ y }}</option>{% endfor %}</select></label>
   <label>月<select name="mt">{% for m in range(1,13) %}<option value="{{ m }}" {{ 'selected' if m==mt }}>{{ m }}</option>{% endfor %}</select></label>
-  <button class="btn btn-sm btn-primary">分析</button>
 </form>
 
 {% if anomalies %}

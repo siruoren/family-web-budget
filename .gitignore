@@ -235,3 +235,4 @@ budget_all-all.json
 scripts/test_security_e2e.py
 **/.DS_Store
 scripts/
+**.csv

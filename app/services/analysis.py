@@ -37,6 +37,17 @@ def _prev_month(year: int, month: int) -> tuple[int, int]:
     return year, m
 
 
+def last_12m_start(year: int, month: int) -> tuple[int, int]:
+    """计算以 (year, month) 为终点的近 12 月窗口起点 (含当月)。
+
+    返回 (yf, mf) 使得 period_series(yf, mf, year, month) 产出 12 个数据点。
+    """
+    start_m = month - 11
+    if start_m <= 0:
+        return year - 1, 12 + start_m
+    return year, start_m
+
+
 def _linear_regression(xs: list[float], ys: list[float]) -> tuple[float, float]:
     """简单最小二乘 -> (slope, intercept)"""
     n = len(xs)
@@ -188,29 +199,40 @@ def item_trend(item_id: int, yf: int, mf: int, yt: int, mt: int,
     }
 
 
+# -------------------------------------------------------------- 可用年份
+def get_available_years(user_id: int) -> list[int]:
+    """获取数据库中所有有数据的年份 (降序), 始终包含当前年份。
+
+    用于年月选择器的年份下拉, 取代写死的 current_year ± N 区间。
+    """
+    rows = db.session.execute(
+        select(Asset.year).where(Asset.user_id == user_id).distinct()
+    ).scalars().all()
+    years = sorted(set(rows), reverse=True)
+    now = datetime.now()
+    if now.year not in years:
+        years.insert(0, now.year)
+    return years
+
+
 # -------------------------------------------------------------- Dashboard 概览
 def dashboard_overview(user_id: int, year: int = None,
                         month: int = None) -> dict:
-    """首页概览: 最新月份汇总 + 近 12 个月趋势 + Top 项目"""
-    now = datetime.now()
+    """首页概览: 指定月份汇总 + 近 12 个月趋势 + Top 项目
 
-    if year is None or month is None:
-        latest = db.session.execute(
-            select(Asset).where(Asset.user_id == user_id)
-            .order_by(Asset.year.desc(), Asset.month.desc()).limit(1)
-        ).scalars().first()
-        if latest:
-            year, month = latest.year, latest.month
-        else:
-            year, month = now.year, now.month
+    year/month 为 None 时回退到当前年月 (而非最新数据月份)。
+    """
+    now = datetime.now()
+    if year is None:
+        year = now.year
+    if month is None:
+        month = now.month
 
     summary = monthly_summary(year, month, user_id)
     missing = missing_items(year, month, user_id)
 
     # 近 12 个月趋势
-    py, pm = _prev_month(year, month)
-    yf = py - 1 if pm == 12 else py
-    mf = pm + 1 if pm < 12 else 1
+    yf, mf = last_12m_start(year, month)
     series = period_series(yf, mf, year, month, user_id)
 
     # 年度 Top 条目 (应用层解密累加后排序取前 10)

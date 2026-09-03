@@ -1,30 +1,38 @@
 {# 菜单管理分片 - 服务端渲染, AJAX 替换整段 #}
 <section id="menus" class="card" data-section="menus">
-  <div class="card-hd">菜单管理 <span class="muted">左侧菜单支持多层级; 筛选类型/属主决定点击后显示哪些条目</span></div>
+  <div class="card-hd">菜单管理 <span class="muted">勾选要显示的条目, 点击左侧菜单查看自定义组合</span></div>
   <div class="card-body">
-    <form class="inline-form" method="post" action="{{ url_for('settings.menu_add') }}"
+    <form class="inline-form menu-add-form" method="post" action="{{ url_for('settings.menu_add') }}"
           data-api="1">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="text" name="name" placeholder="菜单名称" required maxlength="64">
-      <select name="filter_type">
-        <option value="">筛选类型(可选)</option>
-        {% for t in types %}<option value="{{ t.name }}">{{ t.name }}</option>{% endfor %}
-      </select>
-      <input type="text" name="filter_owner" placeholder="筛选属主(如 家庭)" style="width:10rem">
       <input type="number" name="sort_order" value="0" style="width:4rem" title="排序">
+      <details class="item-picker">
+        <summary class="btn btn-sm">选择条目</summary>
+        <div class="item-picker-list">
+          {% for it in items %}
+          <label class="cb-item"><input type="checkbox" name="item_ids" value="{{ it.id }}"> {{ it.type }}/{{ it.owner }}/{{ it.name }}</label>
+          {% endfor %}
+        </div>
+      </details>
       <button class="btn btn-sm btn-primary">添加菜单</button>
     </form>
 
     <table class="data-table menu-table">
-      <thead><tr><th>#</th><th>名称</th><th>筛选类型</th><th>筛选属主</th><th>排序</th><th>状态</th><th>操作</th></tr></thead>
+      <thead><tr><th>#</th><th>名称</th><th>含条目</th><th>排序</th><th>状态</th><th>操作</th></tr></thead>
       <tbody>
       {% macro menu_rows(nodes, depth=0) %}
       {% for m in nodes %}
       <tr class="menu-row depth-{{ depth }}">
         <td>{{ m.id }}</td>
         <td>{{ '　' * depth }}{{ '├ ' if depth > 0 }}{{ m.name }}</td>
-        <td>{{ m.filter_type or '—' }}</td>
-        <td>{{ m.filter_owner or '—' }}</td>
+        <td>
+          {% if m.parsed_item_ids %}
+          <span class="chip">{{ m.parsed_item_ids|length }} 项</span>
+          {% else %}
+          <span class="muted">—</span>
+          {% endif %}
+        </td>
         <td>{{ m.sort_order }}</td>
         <td>{{ '启用' if m.is_active else '停用' }}</td>
         <td class="actions">
@@ -33,15 +41,13 @@
                   class="edit-pop" data-api="1">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="text" name="name" value="{{ m.name }}" required>
-              <select name="filter_type">
-                <option value="">(不筛选)</option>
-                {% for t in types %}
-                <option value="{{ t.name }}" {{ 'selected' if t.name == m.filter_type }}>{{ t.name }}</option>
-                {% endfor %}
-              </select>
-              <input type="text" name="filter_owner" value="{{ m.filter_owner }}" placeholder="筛选属主(如 家庭)">
               <input type="number" name="sort_order" value="{{ m.sort_order }}" style="width:5rem">
               <label class="cb"><input type="checkbox" name="is_active" {{ 'checked' if m.is_active }}> 启用</label>
+              <div class="item-picker-list edit-picker">
+                {% for it in items %}
+                <label class="cb-item"><input type="checkbox" name="item_ids" value="{{ it.id }}" {{ 'checked' if it.id in m.parsed_item_ids }}> {{ it.type }}/{{ it.owner }}/{{ it.name }}</label>
+                {% endfor %}
+              </div>
               <button class="btn btn-sm btn-primary">保存</button>
             </form>
           </details>
@@ -59,7 +65,7 @@
       {% endmacro %}
       {{ menu_rows(menu_tree) }}
       {% if not menu_tree %}
-      <tr><td colspan="7" class="empty-row">暂无菜单</td></tr>
+      <tr><td colspan="6" class="empty-row">暂无菜单</td></tr>
       {% endif %}
       </tbody>
     </table>

@@ -10,6 +10,7 @@ from .. import db
 from ..models import Asset, AccountItem
 from ..services.analysis import (
     period_series, item_trend, monthly_summary, _periods_range,
+    get_available_years,
 )
 from ..services.formula import calculate_month, get_formula, get_all_types
 
@@ -56,12 +57,15 @@ def index():
     # 异常月份
     anomalies = [c for c in monthly_calcs if c["anomaly"]]
 
+    available_years = get_available_years(uid)
+
     return render_template(
         "analysis/index.html",
         series=series, item_trends=item_trends,
         monthly_calcs=monthly_calcs, anomalies=anomalies,
         yf=yf, mf=mf, yt=yt, mt=mt,
         formula=get_formula(), all_types=get_all_types(),
+        available_years=available_years,
     )
 
 

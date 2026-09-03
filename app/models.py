@@ -51,6 +51,7 @@ def ensure_schema():
 
     _add_col("user", "password_hash", "VARCHAR(255) DEFAULT ''")
     _add_col("user", "is_admin", "BOOLEAN DEFAULT 0")
+    _add_col("menu_item", "item_ids", "TEXT DEFAULT ''")
 
 
 class User(db.Model):
@@ -265,7 +266,11 @@ class Setting(db.Model):
 
 
 class MenuItem(db.Model):
-    """左侧菜单项 - 用户可在系统配置中创建多层级菜单"""
+    """左侧菜单项 - 用户可在系统配置中创建多层级菜单
+
+    item_ids: 逗号分隔的 AccountItem ID 列表; 非空时点击菜单显示自定义组合视图。
+    (filter_type / filter_owner 仍保留兼容旧菜单, 但新菜单推荐用 item_ids)
+    """
     __tablename__ = "menu_item"
     __table_args__ = (
         Index("ix_menu_parent", "parent_id"),
@@ -281,6 +286,7 @@ class MenuItem(db.Model):
     is_active = db.Column(Boolean, default=True, index=True)
     filter_type = db.Column(String(32), default="")
     filter_owner = db.Column(String(32), default="")
+    item_ids = db.Column(Text, default="")
     icon = db.Column(String(16), default="")
     created_at = db.Column(DateTime, default=datetime.utcnow)
 
@@ -288,6 +294,17 @@ class MenuItem(db.Model):
         "MenuItem", backref=backref("parent", remote_side=[id]),
         cascade="all, delete-orphan", order_by="MenuItem.sort_order",
     )
+
+    def parsed_item_ids(self) -> list[int]:
+        """将 item_ids 字段解析为 int 列表"""
+        if not self.item_ids:
+            return []
+        out = []
+        for part in self.item_ids.split(","):
+            part = part.strip()
+            if part.isdigit():
+                out.append(int(part))
+        return out
 
     def __repr__(self):
         return f"<MenuItem {self.name} parent={self.parent_id}>"

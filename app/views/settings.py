@@ -150,6 +150,8 @@ def _build_menu_tree() -> list:
             "is_active": m.is_active,
             "filter_type": m.filter_type or "",
             "filter_owner": m.filter_owner or "",
+            "item_ids": m.item_ids or "",
+            "parsed_item_ids": m.parsed_item_ids(),
             "parent_id": m.parent_id,
             "children": [_node(c) for c in children],
         }
@@ -531,23 +533,29 @@ def cleanup_expired_locks():
 
 
 # -------------------------------------------------------------- 菜单管理
+def _parse_item_ids(form) -> str:
+    """从表单 checkbox (name=item_ids, value=ID) 收集选中条目 ID, 返回逗号串"""
+    ids = form.getlist("item_ids")
+    return ",".join(i for i in ids if i.isdigit())
+
+
 @bp.route("/menus/add", methods=["POST"])
 def menu_add():
     name = request.form.get("name", "").strip()
     if not name:
         return _done(False, "菜单名称不能为空")
     parent_id = request.form.get("parent_id", type=int)
-    filter_type = request.form.get("filter_type", "").strip()
-    filter_owner = request.form.get("filter_owner", "").strip()
+    item_ids = _parse_item_ids(request.form)
     sort_order = request.form.get("sort_order", 0, type=int)
     mi = MenuItem(
         name=name, parent_id=parent_id if parent_id else None,
-        filter_type=filter_type, filter_owner=filter_owner,
+        item_ids=item_ids,
         sort_order=sort_order, is_active=True,
     )
     db.session.add(mi)
     db.session.commit()
-    return _done(True, f"已添加菜单: {name}", ("menus",))
+    n = len(item_ids.split(",")) if item_ids else 0
+    return _done(True, f"已添加菜单: {name} (含 {n} 个条目)", ("menus",))
 
 
 @bp.route("/menus/<int:menu_id>/edit", methods=["POST"])
@@ -563,8 +571,7 @@ def menu_edit(menu_id):
         return _done(False, "不能将菜单设为自身的子菜单")
     mi.name = name
     mi.parent_id = parent_id if parent_id else None
-    mi.filter_type = request.form.get("filter_type", "").strip()
-    mi.filter_owner = request.form.get("filter_owner", "").strip()
+    mi.item_ids = _parse_item_ids(request.form)
     mi.sort_order = request.form.get("sort_order", 0, type=int)
     mi.is_active = request.form.get("is_active") == "on"
     db.session.commit()

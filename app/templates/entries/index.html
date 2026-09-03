@@ -8,17 +8,16 @@
     <form class="period-form auto-submit" method="get" action="{{ url_for('entries.index') }}">
       {% if current_type %}<input type="hidden" name="type" value="{{ current_type }}">{% endif %}
       {% if current_owner %}<input type="hidden" name="owner" value="{{ current_owner }}">{% endif %}
-      <select name="year">
-        {% for y in range(current_year - 3, current_year + 2) %}
+      <select name="year" title="年份">
+        {% for y in available_years %}
         <option value="{{ y }}" {{ 'selected' if y == year }}>{{ y }}年</option>
         {% endfor %}
       </select>
-      <select name="month">
+      <select name="month" title="月份">
         {% for m in range(1, 13) %}
         <option value="{{ m }}" {{ 'selected' if m == month }}>{{ m }}月</option>
         {% endfor %}
       </select>
-      <button type="submit" class="btn btn-sm btn-primary">切换</button>
     </form>
     {% if current_type or current_owner %}
     <a class="btn btn-sm" href="{{ url_for('entries.index', year=year, month=month) }}">全部条目</a>
@@ -58,7 +57,15 @@
     <canvas id="trendChart" height="120"></canvas>
   </div>
   <div class="card chart-card">
-    <div class="card-hd">当月类型占比</div>
+    <div class="card-hd">
+      当月条目占比
+      <select id="pieTypeFilter" class="pie-type-filter" style="float:right;font-size:.8rem;">
+        <option value="">全部类型</option>
+        {% for t in pie_data.keys() %}
+        <option value="{{ t }}">{{ t }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <canvas id="pieChart" height="120"></canvas>
   </div>
 </section>
@@ -172,11 +179,11 @@
 <script>
   window.EDIT_LOCK = { year: {{ year }}, month: {{ month }}, userId: "{{ my_user_id }}" };
   var SERIES = {{ series|tojson }};
-  var TOTALS = {{ totals|tojson }};
+  var PIE_DATA = {{ pie_data|tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/edit_lock.js') }}"></script>
 <script>
-// 顶部趋势图 + 占比图
+// 顶部趋势图
 (function () {
   var c1 = document.getElementById("trendChart");
   if (c1 && window.Chart) {
@@ -193,18 +200,44 @@
       options: { responsive: true, plugins: { legend: { position: "bottom" } }, scales: { y: { beginAtZero: true } } }
     });
   }
-  var c2 = document.getElementById("pieChart");
-  if (c2 && window.Chart) {
-    var keys = Object.keys(TOTALS);
-    if (keys.length) {
-      new Chart(c2, {
-        type: "doughnut",
-        data: { labels: keys, datasets: [{ data: keys.map(function(k){return TOTALS[k];}), backgroundColor: ["#16a34a","#dc2626","#2563eb","#d97706","#6b7280"] }] },
-        options: { responsive: true, plugins: { legend: { position: "right" } } }
-      });
-    }
-  }
 })();
+
+// 当月条目占比 (带类型筛选: 全部 / 指定类型)
+var pieChart = null;
+function renderPie(typeFilter) {
+  var canvas = document.getElementById("pieChart");
+  if (!canvas || !window.Chart) return;
+  var items = [];
+  var types = Object.keys(PIE_DATA);
+  if (typeFilter && PIE_DATA[typeFilter]) {
+    // 选中类型: 显示该类型下各条目金额占比
+    PIE_DATA[typeFilter].forEach(function (it) {
+      items.push({ label: it.name + " (" + it.owner + ")", value: it.value });
+    });
+  } else {
+    // 全部类型: 显示所有条目金额占比
+    types.forEach(function (t) {
+      PIE_DATA[t].forEach(function (it) {
+        items.push({ label: it.name, value: it.value });
+      });
+    });
+  }
+  if (pieChart) { pieChart.destroy(); pieChart = null; }
+  if (!items.length) return;
+  var colors = ["#16a34a","#dc2626","#2563eb","#d97706","#7c3aed","#0891b2","#db2777","#65a30d","#ea580c","#0284c7","#9333ea","#ca8a04"];
+  pieChart = new Chart(canvas, {
+    type: "doughnut",
+    data: { labels: items.map(function(i){return i.label;}),
+            datasets: [{ data: items.map(function(i){return i.value;}), backgroundColor: colors }] },
+    options: { responsive: true, plugins: { legend: { position: "right" } } }
+  });
+}
+renderPie("");
+
+var pieSel = document.getElementById("pieTypeFilter");
+if (pieSel) {
+  pieSel.addEventListener("change", function () { renderPie(pieSel.value); });
+}
 
 // 实时合计 (按类型分组: 收入 / 支出 / 结余 / 净额)
 (function () {

@@ -14,6 +14,7 @@ from ..models import AccountItem, Asset, EditLock
 from ..services.formula import calculate_month, get_all_types
 from ..services.analysis import (
     period_series, monthly_summary, missing_items, _prev_month,
+    get_available_years, last_12m_start,
 )
 from ..services.locking import (
     acquire_lock, release_lock, heartbeat_lock, list_locks,
@@ -66,14 +67,13 @@ def index():
 
     # ---- 顶部图表数据 ----
     # 近 12 个月趋势
-    py, pm = _prev_month(year, month)
-    yf = py - 1 if pm == 12 else py
-    mf = pm + 1 if pm < 12 else 1
+    yf, mf = last_12m_start(year, month)
     series = period_series(yf, mf, year, month, uid)
 
     # 当月类型占比 + 量化汇总
     summary = monthly_summary(year, month, uid)
     totals = summary["totals"]
+    pie_data = summary["groups"]  # {type: [{item_id,name,value,...}, ...]}
 
     # 未填写条目 (按当前筛选范围)
     missing = _missing_for_scope(year, month, uid, item_type, owner)
@@ -81,14 +81,18 @@ def index():
     # 各条目近 12 月均值/合计 (用于表格底部量化条目)
     item_stats = _item_stats(all_items, yf, mf, year, month, uid)
 
+    # 年份下拉列表 (数据库中所有年份 + 当前年)
+    available_years = get_available_years(uid)
+
     return render_template(
         "entries/index.html", year=year, month=month,
         all_items=all_items, asset_map=asset_map,
         calc=calc, all_types=all_types,
         current_type=item_type, current_owner=owner,
         locks=locks, my_user_id=str(uid),
-        series=series, totals=totals, missing=missing,
-        item_stats=item_stats, summary=summary,
+        series=series, totals=totals, pie_data=pie_data,
+        missing=missing, item_stats=item_stats, summary=summary,
+        available_years=available_years,
     )
 
 

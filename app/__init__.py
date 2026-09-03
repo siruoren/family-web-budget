@@ -35,18 +35,20 @@ def create_app(config_name: str = "default") -> Flask:
     def _round(v, n=2):
         return round(float(v or 0), n)
 
-    # 注册蓝图 (Views) - v2 仅保留四块 + 认证
+    # 注册蓝图 (Views) - v2 仅保留四块 + 认证 + 自定义菜单
     from .views.dashboard import bp as dashboard_bp
     from .views.entries import bp as entries_bp
     from .views.analysis import bp as analysis_bp
     from .views.settings import bp as settings_bp
     from .views.auth import bp as auth_bp
+    from .views.menu import bp as menu_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(entries_bp)
     app.register_blueprint(analysis_bp)
     app.register_blueprint(settings_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(menu_bp)
 
     # 上下文: 注入用户 / 侧边栏 / 月份选择等通用变量
     from .services.context import inject_globals, ensure_user

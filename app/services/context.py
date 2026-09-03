@@ -57,7 +57,8 @@ def _build_sidebar() -> list:
     """从 MenuItem 表构建多层级侧边菜单树
 
     递归构建: 每个节点包含 name, url, count, children
-    叶子节点(有 filter)的 url 指向 /entries?type=&owner=
+    叶子节点有 item_ids 时 url 指向 /menu/<id> (自定义组合视图);
+    否则若有 filter_type/filter_owner 则指向 /entries?type=&owner= (兼容旧菜单)
     """
     try:
         roots = db.session.execute(
@@ -79,8 +80,13 @@ def _build_sidebar() -> list:
 
         child_list = [_build_node(c) for c in children]
 
+        item_id_list = node.parsed_item_ids()
+        has_items = bool(item_id_list)
         has_filter = bool(node.filter_type or node.filter_owner)
-        if has_filter:
+
+        if has_items:
+            url = url_for("menu.view", menu_id=node.id)
+        elif has_filter:
             params = {}
             if node.filter_type:
                 params["type"] = node.filter_type
@@ -90,23 +96,14 @@ def _build_sidebar() -> list:
         else:
             url = ""
 
-        count = 0
-        if has_filter:
-            q = select(func.count(AccountItem.id)).where(
-                AccountItem.is_active == True  # noqa: E712
-            )
-            if node.filter_type:
-                q = q.where(AccountItem.type == node.filter_type)
-            if node.filter_owner:
-                q = q.where(AccountItem.owner == node.filter_owner)
-            count = db.session.execute(q).scalar() or 0
+        count = len(item_id_list) if has_items else 0
 
         return {
             "id": node.id,
             "name": node.name,
             "url": url,
             "count": count,
-            "has_filter": has_filter,
+            "has_filter": has_items or has_filter,
             "icon": node.icon or "",
             "children": child_list,
         }

@@ -4,7 +4,19 @@
 {% block content %}
 <section class="page-head">
   <h2>本月概览 <small>{{ overview.year }}年{{ overview.month }}月 · {{ current_user_name }}</small></h2>
-  <div class="page-head-actions">
+  <div class="page-actions">
+    <form class="period-form auto-submit" method="get" action="{{ url_for('dashboard.index') }}">
+      <select name="year" title="年份">
+        {% for y in available_years %}
+        <option value="{{ y }}" {{ 'selected' if y == sel_year }}>{{ y }}年</option>
+        {% endfor %}
+      </select>
+      <select name="month" title="月份">
+        {% for m in range(1, 13) %}
+        <option value="{{ m }}" {{ 'selected' if m == sel_month }}>{{ m }}月</option>
+        {% endfor %}
+      </select>
+    </form>
     <a class="btn btn-sm btn-primary"
        href="{{ url_for('entries.index', uid=current_user_id, year=overview.year, month=overview.month) }}">去编辑本月</a>
   </div>
@@ -29,7 +41,15 @@
     <canvas id="trendChart" height="120"></canvas>
   </div>
   <div class="card chart-card">
-    <div class="card-hd">类型占比</div>
+    <div class="card-hd">
+      当月条目占比
+      <select id="pieTypeFilter" class="pie-type-filter" style="float:right;font-size:.8rem;">
+        <option value="">全部类型</option>
+        {% for t in pie_data.keys() %}
+        <option value="{{ t }}">{{ t }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <canvas id="pieChart" height="120"></canvas>
   </div>
 </section>
@@ -81,7 +101,7 @@
 {% block scripts %}
 <script>
   var SERIES = {{ overview.series|tojson }};
-  var TOTALS = {{ overview.summary.totals|tojson }};
+  var PIE_DATA = {{ pie_data|tojson }};
   (function () {
     var c1 = document.getElementById("trendChart");
     if (c1 && window.Chart) {
@@ -98,15 +118,37 @@
         options: { responsive: true, plugins: { legend: { position: "bottom" } }, scales: { y: { beginAtZero: true } } }
       });
     }
-    var c2 = document.getElementById("pieChart");
-    if (c2 && window.Chart) {
-      var keys = Object.keys(TOTALS);
-      new Chart(c2, {
-        type: "doughnut",
-        data: { labels: keys, datasets: [{ data: keys.map(function(k){return TOTALS[k];}), backgroundColor: ["#16a34a","#dc2626","#2563eb","#d97706","#6b7280"] }] },
-        options: { responsive: true, plugins: { legend: { position: "right" } } }
+  })();
+
+  var pieChart = null;
+  function renderPie(typeFilter) {
+    var canvas = document.getElementById("pieChart");
+    if (!canvas || !window.Chart) return;
+    var items = [];
+    var types = Object.keys(PIE_DATA);
+    if (typeFilter && PIE_DATA[typeFilter]) {
+      PIE_DATA[typeFilter].forEach(function (it) {
+        items.push({ label: it.name + " (" + it.owner + ")", value: it.value });
+      });
+    } else {
+      types.forEach(function (t) {
+        PIE_DATA[t].forEach(function (it) {
+          items.push({ label: it.name, value: it.value });
+        });
       });
     }
-  })();
+    if (pieChart) { pieChart.destroy(); pieChart = null; }
+    if (!items.length) return;
+    var colors = ["#16a34a","#dc2626","#2563eb","#d97706","#7c3aed","#0891b2","#db2777","#65a30d","#ea580c","#0284c7","#9333ea","#ca8a04"];
+    pieChart = new Chart(canvas, {
+      type: "doughnut",
+      data: { labels: items.map(function(i){return i.label;}),
+              datasets: [{ data: items.map(function(i){return i.value;}), backgroundColor: colors }] },
+      options: { responsive: true, plugins: { legend: { position: "right" } } }
+    });
+  }
+  renderPie("");
+  var sel = document.getElementById("pieTypeFilter");
+  if (sel) { sel.addEventListener("change", function () { renderPie(sel.value); }); }
 </script>
 {% endblock %}
