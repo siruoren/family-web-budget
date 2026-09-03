@@ -77,10 +77,11 @@ def create_app(config_name: str = "default") -> Flask:
 
 
 def _seed_defaults():
-    """首次启动补齐: 默认用户 + 默认账目类型 (账目条目默认为空)
+    """首次启动补齐: 默认用户 + 默认账目类型 + 月末结余默认条目
 
-    设计: 不预置任何 AccountItem 模板, 让用户通过
-    系统配置 → 导入导出 → 历史数据导入(可下载模板) 按需建立条目。
+    设计: 默认仅植入"月末结余"一个 AccountItem, 让用户每月都能手动填写
+    月末结余值; 其他收入/支出条目由用户通过
+    系统配置 → 导入导出 → 历史数据导入(可下载模板) 按需建立。
     菜单结构(_seed_menu)仍保留 收入/支出/结余 三组导航分组。
     类型管理: ItemType 表空时, 先从旧库 AccountItem.distinct(type) 补入
     (兼容旧库已有条目类型), 再确保 收入/支出/结余 三个默认存在。
@@ -123,6 +124,28 @@ def _seed_defaults():
                 db.session.add(ItemType(
                     name=d, sort_order=order, is_active=True,
                 ))
+        db.session.commit()
+
+    # 月末结余默认条目 (让用户开箱即可在月度条目录入页手动填写月末结余)
+    # 旧库已存在同名同类型同属主条目则跳过 (兼容历史导入的"现金结余"等不重名)
+    has_balance = db.session.execute(
+        select(AccountItem.id).where(
+            AccountItem.name == "月末结余",
+            AccountItem.type == "结余",
+            AccountItem.owner == "家庭",
+        ).limit(1)
+    ).first()
+    if not has_balance:
+        # 取一个较大的 sort_order, 让月末结余排在结余分组末尾
+        max_order = db.session.execute(
+            select(AccountItem).where(AccountItem.type == "结余")
+            .order_by(AccountItem.sort_order.desc()).limit(1)
+        ).scalars().first()
+        next_order = (max_order.sort_order + 1) if max_order else 0
+        db.session.add(AccountItem(
+            name="月末结余", type="结余", owner="家庭",
+            note="月末手动填写结余", sort_order=next_order, is_active=True,
+        ))
         db.session.commit()
 
 

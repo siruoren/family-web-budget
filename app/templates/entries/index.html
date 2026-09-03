@@ -113,7 +113,7 @@
           {% set lk = locks.get(it.id) if locks else none %}
           {% set locked_by_other = lk and lk.user_id != my_user_id %}
           {% set st = item_stats.get(it.id) %}
-          <tr id="row-{{ it.id }}" class="{{ 'row-locked' if locked_by_other }}{{ ' row-missing' if not a }}">
+          <tr id="row-{{ it.id }}" data-type="{{ it.type }}" class="{{ 'row-locked' if locked_by_other }}{{ ' row-missing' if not a }}">
             <td class="c-idx">{% set ns.c = ns.c + 1 %}{{ ns.c }}</td>
             <td class="c-name">{{ it.name }}</td>
             <td class="c-type"><span class="chip chip-{{ 'income' if it.type == '收入' else ('expense' if it.type == '支出' else 'balance') }}">{{ it.type }}</span></td>
@@ -147,9 +147,13 @@
         {% if all_items %}
         <tfoot>
           <tr class="row-total">
-            <td colspan="4" class="ta-right"><b>合计</b></td>
-            <td class="c-val"><b id="totalVal">0.00</b></td>
-            <td colspan="4"></td>
+            <td colspan="4" class="ta-right"><b>分组合计</b></td>
+            <td class="c-val" colspan="5">
+              <span class="sum-chip sum-income">收入 <b id="sumIncome">0.00</b></span>
+              <span class="sum-chip sum-expense">支出 <b id="sumExpense">0.00</b></span>
+              <span class="sum-chip sum-balance">结余 <b id="sumBalance">0.00</b></span>
+              <span class="sum-chip sum-net">净额(收-支) <b id="sumNet">0.00</b></span>
+            </td>
           </tr>
         </tfoot>
         {% endif %}
@@ -202,18 +206,29 @@
   }
 })();
 
-// 实时合计 (Excel 表单体验)
+// 实时合计 (按类型分组: 收入 / 支出 / 结余 / 净额)
 (function () {
   var inputs = document.querySelectorAll('input[name^="item_"]');
-  var totalEl = document.getElementById('totalVal');
-  if (!inputs.length || !totalEl) return;
+  if (!inputs.length) return;
+  var sumIncome = document.getElementById('sumIncome');
+  var sumExpense = document.getElementById('sumExpense');
+  var sumBalance = document.getElementById('sumBalance');
+  var sumNet = document.getElementById('sumNet');
+  // 动态收集所有出现过的类型 (兼容用户自定义类型, 非收/支/结余的归到"其他")
   function calcTotal() {
-    var sum = 0;
+    var sums = { "收入": 0, "支出": 0, "结余": 0, "其他": 0 };
     inputs.forEach(function (el) {
       var v = parseFloat(el.value);
-      if (!isNaN(v)) sum += v;
+      if (isNaN(v)) return;
+      var tr = el.closest('tr');
+      var t = tr ? tr.getAttribute('data-type') : '';
+      if (!(t in sums)) t = "其他";
+      sums[t] += v;
     });
-    totalEl.textContent = sum.toFixed(2);
+    if (sumIncome) sumIncome.textContent = sums["收入"].toFixed(2);
+    if (sumExpense) sumExpense.textContent = sums["支出"].toFixed(2);
+    if (sumBalance) sumBalance.textContent = sums["结余"].toFixed(2);
+    if (sumNet) sumNet.textContent = (sums["收入"] - sums["支出"]).toFixed(2);
   }
   inputs.forEach(function (el) { el.addEventListener('input', calcTotal); });
   calcTotal();
