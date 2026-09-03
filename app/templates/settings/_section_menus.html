@@ -6,7 +6,10 @@
           data-api="1">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="text" name="name" placeholder="菜单名称" required maxlength="64">
-      <input type="text" name="filter_type" placeholder="筛选类型(如 收入)" style="width:10rem">
+      <select name="filter_type">
+        <option value="">筛选类型(可选)</option>
+        {% for t in types %}<option value="{{ t.name }}">{{ t.name }}</option>{% endfor %}
+      </select>
       <input type="text" name="filter_owner" placeholder="筛选属主(如 家庭)" style="width:10rem">
       <input type="number" name="sort_order" value="0" style="width:4rem" title="排序">
       <button class="btn btn-sm btn-primary">添加菜单</button>
@@ -30,7 +33,12 @@
                   class="edit-pop" data-api="1">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="text" name="name" value="{{ m.name }}" required>
-              <input type="text" name="filter_type" value="{{ m.filter_type }}" placeholder="筛选类型(如 收入)">
+              <select name="filter_type">
+                <option value="">(不筛选)</option>
+                {% for t in types %}
+                <option value="{{ t.name }}" {{ 'selected' if t.name == m.filter_type }}>{{ t.name }}</option>
+                {% endfor %}
+              </select>
               <input type="text" name="filter_owner" value="{{ m.filter_owner }}" placeholder="筛选属主(如 家庭)">
               <input type="number" name="sort_order" value="{{ m.sort_order }}" style="width:5rem">
               <label class="cb"><input type="checkbox" name="is_active" {{ 'checked' if m.is_active }}> 启用</label>

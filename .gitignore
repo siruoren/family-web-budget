@@ -234,3 +234,4 @@ budget_all-all.json
 **.xlsx
 scripts/test_security_e2e.py
 **/.DS_Store
+scripts/

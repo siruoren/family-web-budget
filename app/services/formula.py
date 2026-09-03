@@ -130,7 +130,18 @@ def calculate_month(year: int, month: int, user_id: int) -> dict:
 
 
 def get_all_types() -> list[str]:
-    """获取所有已有的账户条目类型"""
+    """获取所有账户条目类型名称 (供公式 datalist / 条目与菜单类型选择)
+
+    优先查 ItemType 表 (用户手动管理的类型); 若表为空 (旧库未迁移),
+    回退查 AccountItem.type distinct (兼容)。
+    """
+    from ..models import ItemType
+    rows = db.session.execute(
+        select(ItemType.name).order_by(ItemType.sort_order, ItemType.id)
+    ).all()
+    if rows:
+        return [r[0] for r in rows]
+    # 回退: 旧库无 ItemType 表数据时从 AccountItem 聚合
     rows = db.session.execute(
         select(AccountItem.type).distinct()
         .order_by(AccountItem.type)

@@ -8,8 +8,12 @@
         <h4>单个新增</h4>
         <div class="form-row"><label>名称</label><input type="text" name="name" required></div>
         <div class="form-row"><label>类型</label>
-          <input type="text" name="type" list="type-list" value="支出" required>
-          <datalist id="type-list">{% for t in all_types %}<option value="{{ t }}">{% endfor %}<option value="收入"><option value="支出"><option value="结余"></datalist>
+          <select name="type" required>
+            {% for t in types %}
+            <option value="{{ t.name }}" {{ 'selected' if t.name == '支出' }}>{{ t.name }}</option>
+            {% endfor %}
+            {% if not types %}<option value="支出">支出</option>{% endif %}
+          </select>
         </div>
         <div class="form-row"><label>属主</label><input type="text" name="owner" value="家庭"></div>
         <div class="form-row"><label>备注</label><input type="text" name="note"></div>
@@ -41,7 +45,12 @@
                   class="edit-pop" data-api="1">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="text" name="name" value="{{ it.name }}" required>
-              <input type="text" name="type" value="{{ it.type }}" required>
+              <select name="type" required>
+                {% for t in types %}
+                <option value="{{ t.name }}" {{ 'selected' if t.name == it.type }}>{{ t.name }}</option>
+                {% endfor %}
+                {% if not types %}<option value="{{ it.type }}" selected>{{ it.type }}</option>{% endif %}
+              </select>
               <input type="text" name="owner" value="{{ it.owner }}" required>
               <input type="text" name="note" value="{{ it.note or '' }}">
               <label class="cb"><input type="checkbox" name="is_active" {{ 'checked' if it.is_active }}> 启用</label>

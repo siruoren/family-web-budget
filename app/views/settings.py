@@ -14,7 +14,9 @@ from flask import (
 from sqlalchemy import select, func
 
 from .. import db
-from ..models import User, AccountItem, Asset, EditLock, Setting, MenuItem
+from ..models import (
+    User, AccountItem, Asset, EditLock, Setting, MenuItem, ItemType,
+)
 from ..services.locking import (
     get_setting, set_setting, get_lock_ttl, is_lock_enabled,
     list_all_locks, force_release, force_release_all, cleanup_expired,
@@ -33,6 +35,7 @@ def _app_version() -> str:
 # 每个 section 名 -> 分片模板路径; AJAX 操作后只返回受影响的分片 HTML
 _SECTION_PARTIAL = {
     "menus": "settings/_section_menus.html",
+    "types": "settings/_section_types.html",
     "items": "settings/_section_items.html",
     "users": "settings/_section_users.html",
     "import-export": "settings/_section_import_export.html",
@@ -56,6 +59,7 @@ def _ctx() -> dict:
     stats = {
         "users": db.session.query(func.count(User.id)).scalar() or 0,
         "items": db.session.query(func.count(AccountItem.id)).scalar() or 0,
+        "types": db.session.query(func.count(ItemType.id)).scalar() or 0,
         "assets": db.session.query(func.count(Asset.id)).scalar() or 0,
         "active_locks": db.session.query(func.count(EditLock.id)).scalar() or 0,
     }
@@ -73,6 +77,9 @@ def _ctx() -> dict:
     users = db.session.execute(
         select(User).order_by(User.sort_order, User.id)
     ).scalars().all()
+    types = db.session.execute(
+        select(ItemType).order_by(ItemType.sort_order, ItemType.id)
+    ).scalars().all()
     items = db.session.execute(
         select(AccountItem).order_by(
             AccountItem.type, AccountItem.sort_order, AccountItem.id
@@ -86,7 +93,7 @@ def _ctx() -> dict:
     }
     return {
         "stats": stats, "sys_info": sys_info,
-        "users": users, "items": items,
+        "users": users, "items": items, "types": types,
         "menu_tree": _build_menu_tree(),
         "lock_config": lock_config,
         "active_locks": list_all_locks(),
@@ -243,6 +250,84 @@ def user_delete(user_id):
     return _done(
         True, f"已删除用户: {name} (及其所有数据)",
         ("users", "sysinfo", "security"),
+    )
+
+
+# -------------------------------------------------------------- 账户类型管理
+@bp.route("/types/add", methods=["POST"])
+def type_add():
+    """新增账目类型 (如 投资/储蓄/负债)"""
+    name = request.form.get("name", "").strip()
+    if not name:
+        return _done(False, "类型名称不能为空")
+    existing = db.session.execute(
+        select(ItemType).where(ItemType.name == name)
+    ).scalars().first()
+    if existing:
+        return _done(False, f"类型 '{name}' 已存在")
+    max_order = db.session.execute(
+        select(func.max(ItemType.sort_order))
+    ).scalar() or 0
+    db.session.add(ItemType(name=name, sort_order=max_order + 1, is_active=True))
+    db.session.commit()
+    return _done(
+        True, f"已新增类型: {name}",
+        ("types", "items", "menus", "formula", "sysinfo"),
+    )
+
+
+@bp.route("/types/<int:type_id>/edit", methods=["POST"])
+def type_edit(type_id):
+    """编辑类型名称 (会级联更新所有引用此类型的 AccountItem.type)"""
+    it = db.session.get(ItemType, type_id)
+    if not it:
+        return _done(False, "类型不存在")
+    new_name = request.form.get("name", "").strip()
+    if not new_name:
+        return _done(False, "类型名称不能为空")
+    if new_name != it.name:
+        dup = db.session.execute(
+            select(ItemType).where(
+                ItemType.name == new_name, ItemType.id != type_id
+            )
+        ).scalars().first()
+        if dup:
+            return _done(False, f"类型名称 '{new_name}' 已被占用")
+        # 级联更新 AccountItem.type
+        old_name = it.name
+        db.session.query(AccountItem).filter(
+            AccountItem.type == old_name
+        ).update({AccountItem.type: new_name})
+        it.name = new_name
+    it.sort_order = request.form.get("sort_order", it.sort_order, type=int)
+    it.is_active = request.form.get("is_active") == "on"
+    db.session.commit()
+    return _done(
+        True, f"已更新类型: {it.name}",
+        ("types", "items", "menus", "formula"),
+    )
+
+
+@bp.route("/types/<int:type_id>/delete", methods=["POST"])
+def type_delete(type_id):
+    """删除类型 (若有 AccountItem 引用则阻止)"""
+    it = db.session.get(ItemType, type_id)
+    if not it:
+        return _done(False, "类型不存在")
+    ref_count = db.session.execute(
+        select(func.count(AccountItem.id)).where(AccountItem.type == it.name)
+    ).scalar() or 0
+    if ref_count > 0:
+        return _done(
+            False, f"类型 '{it.name}' 仍被 {ref_count} 个条目引用, "
+            f"请先迁移或删除这些条目"
+        )
+    name = it.name
+    db.session.delete(it)
+    db.session.commit()
+    return _done(
+        True, f"已删除类型: {name}",
+        ("types", "items", "menus", "formula", "sysinfo"),
     )
 
 

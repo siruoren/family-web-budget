@@ -1,0 +1,46 @@
+{# 账户类型管理分片 - AJAX 替换整段 #}
+<section id="types" class="card" data-section="types">
+  <div class="card-hd">账户类型 <span class="muted">账目类型可手动创建 (如 投资/储蓄/负债); 条目与菜单的类型均从此选择; 有条目引用时不可删除</span></div>
+  <div class="card-body">
+    <form class="inline-form" method="post" action="{{ url_for('settings.type_add') }}" data-api="1">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="name" placeholder="新类型名称 (如 投资)" required maxlength="32">
+      <button class="btn btn-sm btn-primary">新增类型</button>
+    </form>
+
+    <table class="data-table">
+      <thead><tr><th>#</th><th>类型名称</th><th>排序</th><th>状态</th><th>引用条目数</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for t in types %}
+      <tr class="{{ 'row-inactive' if not t.is_active }}">
+        <td>{{ t.id }}</td>
+        <td><span class="chip">{{ t.name }}</span></td>
+        <td>{{ t.sort_order }}</td>
+        <td>{{ '启用' if t.is_active else '停用' }}</td>
+        <td class="muted">—</td>
+        <td class="actions">
+          <details class="inline-edit"><summary class="btn btn-sm">编辑</summary>
+            <form method="post" action="{{ url_for('settings.type_edit', type_id=t.id) }}"
+                  class="edit-pop" data-api="1" data-confirm="改名会级联更新所有引用此类型的条目, 确认?">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="name" value="{{ t.name }}" required>
+              <input type="number" name="sort_order" value="{{ t.sort_order }}" style="width:5rem">
+              <label class="cb"><input type="checkbox" name="is_active" {{ 'checked' if t.is_active }}> 启用</label>
+              <button class="btn btn-sm btn-primary">保存</button>
+            </form>
+          </details>
+          <form method="post" action="{{ url_for('settings.type_delete', type_id=t.id) }}"
+                data-api="1" data-confirm="删除类型 {{ t.name }}? 若有条目引用将被阻止">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-danger">删除</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not types %}
+      <tr><td colspan="6" class="empty-row">暂无类型 (默认应为 收入/支出/结余)</td></tr>
+      {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>

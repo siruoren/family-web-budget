@@ -108,6 +108,70 @@ r = post("/settings/items/add", name="", type="", owner="家庭")
 j = r.get_json()
 check("empty item ok=false", j and j.get("ok") is False)
 
+# 9.5 账户类型管理
+# 默认应有 收入/支出/结余 三个类型 (create_app._seed_defaults 植入)
+r = c.get("/settings/")
+html = r.data.decode("utf-8")
+check("设置页含账户类型分片", 'data-section="types"' in html)
+check("设置页左侧含账户类型导航", "账户类型" in html)
+check("默认类型含收入/支出/结余", "收入" in html and "支出" in html and "结余" in html)
+check("条目表单类型为select", '<select name="type"' in html)
+
+# 新增类型
+r = post("/settings/types/add", name="投资")
+j = r.get_json()
+check("type add ok=true", j and j.get("ok") is True, str(j)[:80] if j else "")
+check("type add 返回 types 分片", j and "types" in (j.get("sections") or {}))
+check("type add 分片含投资", j and "投资" in (j.get("sections") or {}).get("types", ""))
+check("type add 返回 items+menus+formula+sysinfo", j and
+      {"types","items","menus","formula","sysinfo"} <= set((j.get("sections") or {}).keys()))
+
+# 重复类型
+r = post("/settings/types/add", name="投资")
+j = r.get_json()
+check("dup type ok=false", j and j.get("ok") is False)
+
+# 删除被引用类型应阻止 (上面第2步建了"测试条目A" type=支出, 但已被删; 重建一个引用支出)
+post("/settings/items/add", name="支出测试", type="支出", owner="家庭")
+r = post("/settings/types/add", name="待删类型")
+j = r.get_json()
+check("type add 待删 ok", j and j.get("ok") is True)
+# 找到"待删类型"的 id
+from app.models import ItemType
+with app.app_context():
+    t_del = db.session.execute(db.select(ItemType).where(ItemType.name == "待删类型")).scalars().first()
+    t_id_del = t_del.id if t_del else 0
+    t_zc = db.session.execute(db.select(ItemType).where(ItemType.name == "支出")).scalars().first()
+    t_id_zc = t_zc.id if t_zc else 0
+
+# 删除"支出"类型应被阻止 (有条目引用)
+r = post(f"/settings/types/{t_id_zc}/delete")
+j = r.get_json()
+check("del type 被引用阻止 ok=false", j and j.get("ok") is False, str(j)[:80] if j else "")
+check("del type 阻止 msg 含引用数", j and "引用" in (j.get("msg") or ""))
+
+# 删除无引用类型应成功
+r = post(f"/settings/types/{t_id_del}/delete")
+j = r.get_json()
+check("del type 无引用 ok=true", j and j.get("ok") is True)
+check("del type 分片不再含待删", j and "待删类型" not in (j.get("sections") or {}).get("types", ""))
+
+# 编辑类型改名级联条目 (新建类型 + 条目引用, 改名后条目 type 跟着变)
+post("/settings/types/add", name="储蓄")
+with app.app_context():
+    t_save = db.session.execute(db.select(ItemType).where(ItemType.name == "储蓄")).scalars().first()
+    t_save_id = t_save.id
+post("/settings/items/add", name="储蓄A", type="储蓄", owner="家庭")
+r = post(f"/settings/types/{t_save_id}/edit", name="定期储蓄", is_active="on", sort_order=10)
+j = r.get_json()
+check("type edit 改名 ok=true", j and j.get("ok") is True)
+with app.app_context():
+    it_s = db.session.execute(db.select(AccountItem).where(AccountItem.name == "储蓄A")).scalars().first()
+    check("type edit 级联条目 type", it_s is not None and it_s.type == "定期储蓄",
+          f"type={it_s.type if it_s else None}")
+    t_ren = db.session.execute(db.select(ItemType).where(ItemType.name == "定期储蓄")).scalars().first()
+    check("type edit 新名存在", t_ren is not None)
+
 # 10. 非 AJAX (无 X-Requested-With) 仍走 flash+redirect, 3xx
 r2 = c.post("/settings/items/add", data={"csrf_token": token, "name":"传统条目","type":"支出","owner":"家庭"})
 check("非AJAX 写操作 3xx 重定向", 300 <= r2.status_code < 400, str(r2.status_code))

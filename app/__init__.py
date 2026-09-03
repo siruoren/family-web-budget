@@ -77,14 +77,16 @@ def create_app(config_name: str = "default") -> Flask:
 
 
 def _seed_defaults():
-    """首次启动补齐: 默认用户 (账目条目默认为空, 由用户自行导入历史数据建立)
+    """首次启动补齐: 默认用户 + 默认账目类型 (账目条目默认为空)
 
     设计: 不预置任何 AccountItem 模板, 让用户通过
     系统配置 → 导入导出 → 历史数据导入(可下载模板) 按需建立条目。
     菜单结构(_seed_menu)仍保留 收入/支出/结余 三组导航分组。
+    类型管理: ItemType 表空时, 先从旧库 AccountItem.distinct(type) 补入
+    (兼容旧库已有条目类型), 再确保 收入/支出/结余 三个默认存在。
     """
     from sqlalchemy import select
-    from .models import User
+    from .models import User, ItemType, AccountItem
 
     # 确保至少有一个默认用户
     user = db.session.execute(
@@ -98,6 +100,30 @@ def _seed_defaults():
         if not any_user:
             db.session.add(user)
     db.session.commit()
+
+    # 默认账目类型 (ItemType 表空时补齐)
+    if not db.session.query(ItemType).first():
+        # 旧库兼容: 先把 AccountItem 中已用但 ItemType 表没有的类型补入
+        used = db.session.execute(
+            select(AccountItem.type).distinct().order_by(AccountItem.type)
+        ).all()
+        order = 0
+        for (t,) in used:
+            if t:
+                order += 1
+                db.session.add(ItemType(
+                    name=t, sort_order=order, is_active=True,
+                ))
+        # 确保三个默认类型存在
+        defaults = ["收入", "支出", "结余"]
+        existing = {t.name for t in db.session.query(ItemType).all()}
+        for d in defaults:
+            if d not in existing:
+                order += 1
+                db.session.add(ItemType(
+                    name=d, sort_order=order, is_active=True,
+                ))
+        db.session.commit()
 
 
 def _seed_menu():

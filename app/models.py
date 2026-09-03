@@ -82,7 +82,10 @@ class User(db.Model):
 
 
 class AccountItem(db.Model):
-    """账户条目模板 - 名称+类型+属主 唯一 (配置/元数据, 不加密)"""
+    """账户条目模板 - 名称+类型+属主 唯一 (配置/元数据, 不加密)
+
+    type 字段值应对应 ItemType.name; 通过独立的 ItemType 表管理可创建的类型。
+    """
     __tablename__ = "account_item"
     __table_args__ = (
         UniqueConstraint("name", "type", "owner", name="uq_item_name_type_owner"),
@@ -104,6 +107,28 @@ class AccountItem(db.Model):
 
     def __repr__(self):
         return f"<AccountItem {self.type}/{self.owner}/{self.name}>"
+
+
+class ItemType(db.Model):
+    """账户条目类型 - 独立管理, 用户可手动创建新类型 (收入/支出/结余/投资/储蓄...)
+
+    AccountItem.type 字段值对应此表 name; 通过系统配置 → 类型管理 增删改。
+    删除时若仍有 AccountItem 引用该类型则阻止 (需先迁移条目)。
+    """
+    __tablename__ = "item_type"
+    __table_args__ = (
+        UniqueConstraint("name", name="uq_item_type_name"),
+        Index("ix_item_type_sort", "sort_order"),
+    )
+
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(32), nullable=False, unique=True)
+    sort_order = db.Column(Integer, default=0)
+    is_active = db.Column(Boolean, default=True, index=True)
+    created_at = db.Column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<ItemType {self.name}>"
 
 
 class Asset(db.Model):
