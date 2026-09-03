@@ -50,3 +50,45 @@ document.addEventListener("DOMContentLoaded", () => {
     sel.addEventListener("change", (e) => e.target.form.submit());
   });
 });
+
+// 侧边栏: 根据当前 URL 自动展开对应子菜单分支并高亮
+// 解决 <details> 在页面跳转后回到收起状态的问题
+document.addEventListener("DOMContentLoaded", () => {
+  const normUrl = (rawUrl) => {
+    // 统一比较 pathname + 排序后的 query, 规避参数顺序与中文编码差异
+    let u;
+    try { u = new URL(rawUrl, location.origin); }
+    catch (e) { return ""; }
+    const sp = Array.from(u.searchParams.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([k, v]) => `${k}=${v}`)
+      .join("&");
+    return u.pathname + (sp ? "?" + sp : "");
+  };
+
+  const curKey = normUrl(location.href);
+  if (!curKey) return;
+
+  let activeLink = null;
+  document.querySelectorAll(".tree-leaf-link").forEach((link) => {
+    const href = link.getAttribute("href") || "";
+    if (!href || href === "#" || href.startsWith("javascript:")) return;
+    if (normUrl(link.href) === curKey) {
+      activeLink = link;
+    }
+  });
+
+  if (!activeLink) return;
+
+  // 高亮当前叶子链接
+  activeLink.classList.add("active");
+
+  // 展开所有祖先 <details.tree-det>, 使当前分支保持展开
+  let el = activeLink.parentElement;
+  while (el && el !== document) {
+    if (el.tagName === "DETAILS" && el.classList.contains("tree-det")) {
+      el.open = true;
+    }
+    el = el.parentElement;
+  }
+});

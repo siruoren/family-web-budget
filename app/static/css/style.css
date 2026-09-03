@@ -111,6 +111,8 @@ details.tree-det[open] > .tree-summary::before { transform: rotate(90deg); }
   border-radius: 6px; margin: 0 .3rem; transition: background .12s ease;
 }
 .tree-leaf-link:hover { background: var(--primary-soft); color: var(--primary); text-decoration: none; }
+.tree-leaf-link.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+.tree-leaf-link.active .leaf-dot { background: var(--primary); }
 .leaf-dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--muted); flex: none;
