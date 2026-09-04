@@ -124,17 +124,15 @@
             <th class="c-note">备注</th>
             <th class="c-stat c-stat-avg">均值</th>
             <th class="c-stat c-stat-sum">合计</th>
-            <th class="c-lock">锁</th>
+            <th class="c-status">状态</th>
           </tr>
         </thead>
         <tbody>
         {% set ns = namespace(c=0) %}
         {% for it in all_items %}
           {% set a = asset_map.get(it.id) %}
-          {% set lk = locks.get(it.id) if locks else none %}
-          {% set locked_by_other = lk and lk.user_id != my_user_id %}
           {% set st = item_stats.get(it.id) %}
-          <tr id="row-{{ it.id }}" data-type="{{ it.type }}" class="{{ 'row-locked' if locked_by_other }}{{ ' row-missing' if not a }}">
+          <tr id="row-{{ it.id }}" data-type="{{ it.type }}" class="{{ 'row-missing' if not a }}">
             <td class="c-idx" data-label="序号">{% set ns.c = ns.c + 1 %}{{ ns.c }}</td>
             <td class="c-name" data-label="名称">{{ it.name }}</td>
             <td class="c-type" data-label="类型"><span class="chip chip-{{ 'income' if it.type == '收入' else ('expense' if it.type == '支出' else 'balance') }}">{{ it.type }}</span></td>
@@ -143,23 +141,22 @@
               {% set carry = carry_map.get(it.id) if carry_map else none %}
               <input type="number" step="0.01" inputmode="decimal" name="item_{{ it.id }}"
                      value="{{ a.value if a and a.value is not none else '' }}"
-                     data-rt="asset" data-rid="{{ it.id }}"
-                     {{ 'disabled' if locked_by_other else 'readonly' }}
+                     readonly
                      {% if carry %}placeholder="结转 {{ carry|fmt_money }}" data-carry="{{ carry }}"{% else %}placeholder="0.00"{% endif %}
                      class="table-input{{ ' input-carry' if carry }}">
             </td>
             <td class="c-note" data-label="备注">
               <input type="text" name="note_{{ it.id }}"
                      value="{{ a.note if a else '' }}" maxlength="120"
-                     class="table-input" {{ 'disabled' if locked_by_other else 'readonly' }}>
+                     class="table-input" readonly>
             </td>
             <td class="c-stat c-stat-avg muted font-nums" data-label="均值">{{ st.avg|fmt_money if st else '-' }}</td>
             <td class="c-stat c-stat-sum muted font-nums" data-label="合计">{{ st.sum|fmt_money if st else '-' }}</td>
-            <td class="c-lock" data-label="状态" id="lock-{{ it.id }}">
-              {% if locked_by_other %}
-                <span class="locked" title="被 {{ lk.user_label }} 锁定">🔒 {{ lk.user_label }}</span>
-              {% elif not a %}
+            <td class="c-status" data-label="状态">
+              {% if not a %}
                 <span class="chip chip-warn" title="未填写">未填</span>
+              {% else %}
+                <span class="chip chip-ok" title="已填写">✓</span>
               {% endif %}
             </td>
           </tr>
@@ -192,8 +189,6 @@
 
 {% block scripts %}
 <script>
-  window.EDIT_LOCK = { year: {{ year }}, month: {{ month }}, userId: "{{ my_user_id }}" };
-
 // 实时合计
 (function () {
   var inputs = document.querySelectorAll('input[name^="item_"]');
@@ -249,7 +244,6 @@
     editMode = !editMode;
     var inputs = table.querySelectorAll('input.table-input');
     inputs.forEach(function (el) {
-      if (el.disabled) return; // locked by other, skip
       if (editMode) {
         el.removeAttribute('readonly');
         el.classList.add('editable');
@@ -266,7 +260,6 @@
       btnSave.disabled = false;
       btnSave.style.opacity = '';
       btnSave.style.pointerEvents = '';
-      // focus first editable input
       var first = table.querySelector('input.table-input.editable');
       if (first) first.focus();
     } else {
@@ -279,7 +272,6 @@
       btnSave.style.pointerEvents = 'none';
     }
   });
-  // save button loading state
   if (btnSave) {
     form.addEventListener('submit', function () {
       btnSave.classList.add('btn-loading');
@@ -287,5 +279,4 @@
   }
 })();
 </script>
-<script src="{{ url_for('static', filename='js/edit_lock.js') }}"></script>
 {% endblock %}

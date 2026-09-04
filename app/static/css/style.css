@@ -390,7 +390,7 @@ table.data-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
 .entry-table .c-owner { width: 5rem; }
 .entry-table .c-val { width: 8rem; }
 .entry-table .c-stat { width: 5.5rem; text-align: right; font-variant-numeric: tabular-nums; }
-.entry-table .c-lock { width: 6rem; }
+.entry-table .c-status { width: 5rem; text-align: center; }
 .entry-table tfoot td { border-top: 2px solid var(--primary); }
 
 /* ---------- Chips / Badges ---------- */
@@ -410,6 +410,7 @@ table.data-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
 }
 .badge-danger { background: var(--danger-soft); color: var(--danger); }
 .badge-ok { background: var(--success-soft); color: var(--success); }
+.chip-ok { background: var(--success-soft); color: var(--success); }
 
 /* ---------- Buttons (iOS Style) ---------- */
 .btn {

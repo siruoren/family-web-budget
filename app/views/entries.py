@@ -1,26 +1,22 @@
-"""月度条目视图 - 填写条目 / 批量保存 / 并发锁
+"""月度条目视图 - 填写条目 / 批量保存
 
 v2 架构: 使用 AccountItem + Asset 模型
 """
 from datetime import datetime
 from flask import (
-    Blueprint, render_template, request, redirect, url_for, jsonify,
+    Blueprint, render_template, request, redirect, url_for,
     session, flash, g,
 )
 from sqlalchemy import select
 
 from .. import db
-from ..models import AccountItem, Asset, EditLock
+from ..models import AccountItem, Asset
 from ..services.formula import (
     calculate_month, get_all_types, get_last_month_value,
 )
 from ..services.analysis import (
-    period_series, monthly_summary, missing_items, _prev_month,
+    period_series, monthly_summary, missing_items,
     get_available_years, last_12m_start,
-)
-from ..services.locking import (
-    acquire_lock, release_lock, heartbeat_lock, list_locks,
-    get_lock_ttl, is_lock_enabled, check_conflict,
 )
 
 bp = Blueprint("entries", __name__)
@@ -37,7 +33,7 @@ def _get_period() -> tuple[int, int]:
 
 @bp.route("/entries")
 def index():
-    """月度条目填写页 - 顶部图表 + Excel 表单 + 锁状态"""
+    """月度条目填写页 - 量化卡片 + Excel 表单"""
     year, month = _get_period()
     uid = g.current_user.id
 
@@ -76,8 +72,6 @@ def index():
     calc = calculate_month(year, month, uid)
     all_types = get_all_types()
 
-    locks = list_locks("asset", year, month)
-
     # ---- 顶部图表数据 ----
     # 近 12 个月趋势
     yf, mf = last_12m_start(year, month)
@@ -103,7 +97,6 @@ def index():
         carry_map=carry_map,
         calc=calc, all_types=all_types,
         current_type=item_type, current_owner=owner,
-        locks=locks, my_user_id=str(uid),
         series=series, totals=totals, pie_data=pie_data,
         missing=missing, item_stats=item_stats, summary=summary,
         available_years=available_years,
@@ -180,7 +173,7 @@ def save():
     ).scalars().all()
     asset_map = {a.account_item_id: a for a in existing}
 
-    saved, skipped, conflicts = 0, 0, []
+    saved, skipped = 0, 0
     carried = 0
     for it in items:
         raw = request.form.get(f"item_{it.id}", "").strip()
@@ -202,10 +195,6 @@ def save():
             flash(f"条目 '{it.name}' 的值 '{raw}' 不是有效数字", "error")
             skipped += 1
             continue
-        conflict = check_conflict("asset", it.id, str(uid), year, month)
-        if conflict:
-            conflicts.append({"name": it.name, "who": conflict["user_label"]})
-            continue
         a = asset_map.get(it.id)
         if a:
             a.value = val
@@ -219,9 +208,6 @@ def save():
 
     db.session.commit()
 
-    if conflicts:
-        names = "、".join(f"{c['name']}(被{c['who']}锁定)" for c in conflicts)
-        flash(f"以下条目被他人锁定已跳过: {names}", "warning")
     msg = f"已保存 {saved} 条 {year}年{month}月 数据"
     if carried:
         msg += f", 储蓄自动结转 {carried} 条"
@@ -237,66 +223,3 @@ def save():
     params["year"] = year
     params["month"] = month
     return redirect(url_for("entries.index", **params))
-
-
-# =============================================================================
-# 并发锁 API
-# =============================================================================
-
-@bp.route("/locks/asset/<int:rid>", methods=["POST"])
-def lock_asset(rid):
-    payload = request.get_json(silent=True) or {}
-    year = payload.get("year")
-    month = payload.get("month")
-    if not (year and month):
-        return jsonify({"error": "需要 year 和 month"}), 400
-    ok, holder = acquire_lock(
-        "asset", rid, str(g.current_user.id), year, month,
-        user_label=g.current_user.name,
-    )
-    if ok:
-        return jsonify({"ok": True, "mine": True,
-                        "remaining_seconds": get_lock_ttl(),
-                        "lock_enabled": is_lock_enabled()})
-    return jsonify({"ok": False, "mine": False,
-                    "user_label": (holder.user_label if holder else "") or "其他用户",
-                    "remaining_seconds": int((holder.expires_at - datetime.utcnow()).total_seconds()) if holder else 0}), 409
-
-
-@bp.route("/locks/asset/<int:rid>/heartbeat", methods=["POST"])
-def heartbeat_asset(rid):
-    payload = request.get_json(silent=True) or {}
-    year = payload.get("year")
-    month = payload.get("month")
-    if not (year and month):
-        return jsonify({"error": "需要 year 和 month"}), 400
-    ok, holder = heartbeat_lock(
-        "asset", rid, str(g.current_user.id), year, month,
-    )
-    if ok:
-        return jsonify({"ok": True, "mine": True,
-                        "remaining_seconds": get_lock_ttl(),
-                        "lock_enabled": is_lock_enabled()})
-    return jsonify({"ok": False, "mine": False,
-                    "user_label": (holder.user_label if holder else "") or "其他用户",
-                    "remaining_seconds": int((holder.expires_at - datetime.utcnow()).total_seconds()) if holder else 0}), 409
-
-
-@bp.route("/locks/asset/<int:rid>", methods=["DELETE"])
-def unlock_asset(rid):
-    payload = request.get_json(silent=True) or {}
-    year = payload.get("year")
-    month = payload.get("month")
-    if not (year and month):
-        return jsonify({"error": "需要 year 和 month"}), 400
-    release_lock("asset", rid, str(g.current_user.id), year, month)
-    return jsonify({"ok": True})
-
-
-@bp.route("/locks/asset/<int:year>/<int:month>", methods=["GET"])
-def list_period_locks(year, month):
-    locks = list_locks("asset", year, month)
-    return jsonify({
-        "my_user_id": str(g.current_user.id),
-        "locks": [{"rid": rid, **info} for rid, info in locks.items()],
-    })
