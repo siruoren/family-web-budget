@@ -81,7 +81,7 @@ def create_app(config_name: str = "default") -> Flask:
 
 
 def _seed_defaults():
-    """首次启动补齐: 默认用户 + 默认账目类型 + 月末结余默认条目
+    """首次启动补齐: 默认用户 + 默认账目类型
 
     类型体系:
       收入     — 当月各项收入
@@ -135,37 +135,6 @@ def _seed_defaults():
             ))
     db.session.commit()
 
-    # 月末结余默认条目 (type=资产总和, 可手动输入总资产)
-    has_balance = db.session.execute(
-        select(AccountItem.id).where(
-            AccountItem.name == "月末结余",
-            AccountItem.type == "资产总和",
-            AccountItem.owner == "家庭",
-        ).limit(1)
-    ).first()
-    if not has_balance:
-        max_order = db.session.execute(
-            select(AccountItem).where(AccountItem.type == "资产总和")
-            .order_by(AccountItem.sort_order.desc()).limit(1)
-        ).scalars().first()
-        next_order = (max_order.sort_order + 1) if max_order else 0
-        db.session.add(AccountItem(
-            name="月末结余", type="资产总和", owner="家庭",
-            note="月末总资产, 可手动输入; 留空则自动=储蓄+理财",
-            sort_order=next_order, is_active=True,
-        ))
-        db.session.commit()
-
-    # 清理: 删除冗余的"月末储蓄"条目 (已由"月末结余"替代)
-    redundant = db.session.execute(
-        select(AccountItem).where(
-            AccountItem.name == "月末储蓄",
-        )
-    ).scalars().all()
-    for mi in redundant:
-        db.session.delete(mi)
-    db.session.commit()
-
 
 def _migrate_old_types():
     """迁移旧类型名称到新类型
@@ -216,7 +185,7 @@ def _migrate_old_types():
 
 
 def _seed_menu():
-    """首次启动补齐: 默认左侧菜单结构 (收入/支出/储蓄/理财/资产总和 五组)"""
+    """首次启动补齐: 默认左侧菜单结构 (收入/支出/储蓄/理财 四组)"""
     from .models import MenuItem
 
     if db.session.query(MenuItem).first():
@@ -231,8 +200,6 @@ def _seed_menu():
         ("家庭储蓄", "储蓄", "家庭", 5, True),
         ("理财", "", "", 6, True),
         ("家庭理财", "理财", "家庭", 7, True),
-        ("资产总和", "", "", 8, True),
-        ("家庭资产总和", "资产总和", "家庭", 9, True),
     ]
     parents = {}
     for name, ftype, fowner, order, active in menus:
