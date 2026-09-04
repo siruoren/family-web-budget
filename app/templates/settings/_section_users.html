@@ -1,6 +1,6 @@
 {# 用户管理分片 - AJAX 替换整段 #}
 <section id="users" class="card" data-section="users">
-  <div class="card-hd">用户管理 <span class="muted">点击切换见顶部下拉; 默认用户为打开页面时的默认身份; 密码可留空(不门禁), 设密码后该用户访问需先解锁</span></div>
+  <div class="card-hd">用户管理 <span class="muted">数据按用户 ID 关联, 改名后历史数据自动跟随; 改名需验证该用户密码(无密码可留空); 顶部下拉切换身份, 设默认=打开页面时的默认身份</span></div>
   <div class="card-body">
     <form class="inline-form" method="post" action="{{ url_for('settings.user_add') }}" data-api="1">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -23,6 +23,15 @@
         <td>{{ u.sort_order }}</td>
         <td>{{ u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else '' }}</td>
         <td class="actions">
+          <details class="inline-edit"><summary class="btn btn-sm">改名</summary>
+            <form method="post" action="{{ url_for('settings.user_rename', user_id=u.id) }}"
+                  class="edit-pop" data-api="1" data-confirm="确认修改用户名? 改名后数据仍按 ID 关联, 属主等于旧名的条目将同步更新。">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="name" placeholder="新用户名" required maxlength="32" value="{{ u.name }}">
+              <input type="password" name="password" placeholder="{{ '当前密码验证' if u.password_hash else '无密码, 可留空' }}" {{ 'required' if u.password_hash else '' }}>
+              <button class="btn btn-sm btn-primary">确认改名</button>
+            </form>
+          </details>
           <details class="inline-edit"><summary class="btn btn-sm">设置密码</summary>
             <form method="post" action="{{ url_for('settings.user_set_password', user_id=u.id) }}"
                   class="edit-pop" data-api="1">

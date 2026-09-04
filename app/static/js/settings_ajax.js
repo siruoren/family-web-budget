@@ -147,6 +147,10 @@
         // 含文件输入的表单成功后清空, 避免误重复导入
         if (form.querySelector('input[type="file"]')) form.reset();
         toast(j.msg || "操作成功", "ok");
+        // 服务端要求整页刷新 (如改用户名后顶栏需更新)
+        if (j.reload) {
+          setTimeout(function () { window.location.reload(); }, 900);
+        }
       } else {
         toast(j.msg || "操作失败", "error");
       }

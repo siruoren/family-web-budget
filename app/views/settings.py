@@ -220,6 +220,54 @@ def user_set_password(user_id):
     )
 
 
+@bp.route("/users/<int:user_id>/rename", methods=["POST"])
+def user_rename(user_id):
+    """修改用户名 — 需验证该用户密码; 级联更新 AccountItem.owner
+
+    数据关联: Asset 通过 user_id 关联用户, 改名后数据自动跟随 (无需迁移);
+    AccountItem.owner 为字符串属主, 若其值等于旧用户名则同步更新为新名,
+    保证"导入时用用户名作属主"的记录在改名后仍正确归属同一用户。
+    改名成功后返回 reload 标记, 前端整页刷新以更新顶栏用户名。
+    """
+    user = db.session.get(User, user_id)
+    if not user:
+        return _done(False, "用户不存在")
+    new_name = request.form.get("name", "").strip()
+    if not new_name:
+        return _done(False, "新用户名不能为空")
+    if new_name == user.name:
+        return _done(False, "新用户名与当前相同")
+    dup = db.session.execute(
+        select(User).where(User.name == new_name, User.id != user_id)
+    ).scalars().first()
+    if dup:
+        return _done(False, f"用户名 '{new_name}' 已被占用")
+    # 密码验证: 有密码用户必须校验, 无密码用户允许空密码直接改名
+    password = request.form.get("password", "")
+    if user.password_hash:
+        if not auth.verify_password(password, user.password_hash):
+            return _done(False, "密码错误, 无法改名")
+    old_name = user.name
+    user.name = new_name
+    # 级联更新: 凡 owner 等于旧用户名的条目, 同步改为新名 (其它属主如"家庭"不动)
+    updated_owner = db.session.query(AccountItem).filter(
+        AccountItem.owner == old_name
+    ).update({AccountItem.owner: new_name})
+    db.session.commit()
+    msg = f"已将用户 '{old_name}' 改名为 '{new_name}'"
+    if updated_owner:
+        msg += f", 同步更新 {updated_owner} 条目属主"
+    ctx = _ctx()
+    if _is_ajax():
+        return jsonify({
+            "ok": True, "msg": msg,
+            "sections": _render_sections(ctx, "users", "sysinfo"),
+            "reload": True,
+        })
+    flash(msg, "success")
+    return redirect(url_for("settings.index", uid=user_id))
+
+
 @bp.route("/users/<int:user_id>/default", methods=["POST"])
 def user_set_default(user_id):
     user = db.session.get(User, user_id)

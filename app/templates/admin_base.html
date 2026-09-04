@@ -6,6 +6,7 @@
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{% block title %}系统管理{% endblock %} · 君军之家</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_dark.css') }}">
   {% block head %}{% endblock %}
 </head>
 <body class="admin-body">

@@ -1,0 +1,183 @@
+/* ===================================================================
+   系统管理页深色风格 — 对齐登录首页 (animated_login) 视觉语言
+   登录页: #1a1a2e 深底 + #6c3ff5/#5b21b6 紫色强调 + 毛玻璃 + 下划线输入
+   本文件以 .admin-body 前缀提升优先级, 覆盖 style.css 的 iOS 浅色样式。
+   =================================================================== */
+
+.admin-body {
+  background: linear-gradient(135deg, #1a1a2e 0%, #2a2a48 50%, #1a1a2e 100%);
+  color: #e2e2f0;
+  min-height: 100vh;
+}
+
+/* ---------- 顶栏: 紫色渐变 (登录页强调色) ---------- */
+.admin-body .admin-topbar {
+  background: linear-gradient(135deg, #6c3ff5 0%, #5b21b6 100%);
+  border-bottom: none;
+  box-shadow: 0 4px 24px rgba(108, 63, 245, 0.28);
+}
+.admin-body .admin-topbar .brand { color: #fff; font-weight: 700; }
+.admin-body .admin-topbar .admin-user { color: rgba(255, 255, 255, 0.85); }
+.admin-body .admin-topbar .admin-user b { color: #fff; }
+.admin-body .admin-topbar .badge {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+}
+.admin-body .admin-topbar .btn {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+.admin-body .admin-topbar .btn:hover { background: rgba(255, 255, 255, 0.28); }
+
+/* ---------- 侧栏: 毛玻璃深色 ---------- */
+.admin-body .admin-sidebar {
+  background: rgba(255, 255, 255, 0.04);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.admin-body .admin-side-title { color: rgba(255, 255, 255, 0.5); }
+.admin-body .admin-nav .anav {
+  color: rgba(255, 255, 255, 0.78);
+  border-left: 3px solid transparent;
+}
+.admin-body .admin-nav .anav:hover {
+  background: rgba(108, 63, 245, 0.18);
+  color: #fff;
+  border-left-color: #a78bfa;
+}
+
+/* ---------- 内容区 ---------- */
+.admin-body .admin-content { color: #e2e2f0; }
+.admin-body .page-title { color: #fff; letter-spacing: -0.5px; }
+
+/* ---------- 卡片: 深色毛玻璃 ---------- */
+.admin-body .card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.28);
+}
+.admin-body .card-hd {
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.admin-body .card-hd .muted { color: rgba(255, 255, 255, 0.55); }
+.admin-body .card-body { color: #e2e2f0; }
+
+/* ---------- 表格 ---------- */
+.admin-body .data-table { color: #e2e2f0; }
+.admin-body .data-table th {
+  background: rgba(108, 63, 245, 0.16);
+  color: #fff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+.admin-body .data-table td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.admin-body .data-table tr:hover td { background: rgba(108, 63, 245, 0.08); }
+.admin-body .data-table .row-default td {
+  background: rgba(108, 63, 245, 0.12);
+}
+.admin-body .data-table .empty-row { color: rgba(255, 255, 255, 0.4); }
+
+/* ---------- 输入框/选择框: 下划线风格 (对齐登录页) ---------- */
+.admin-body .inline-form input[type="text"],
+.admin-body .inline-form input[type="password"],
+.admin-body .inline-form input[type="number"],
+.admin-body .inline-form select,
+.admin-body .inline-form textarea,
+.admin-body .edit-pop input,
+.admin-body .edit-pop select,
+.admin-body .edit-pop textarea,
+.admin-body .data-table input,
+.admin-body .data-table select,
+.admin-body .data-table textarea {
+  background: transparent;
+  color: #fff;
+  border: none;
+  border-bottom: 1.5px solid rgba(255, 255, 255, 0.22);
+  border-radius: 0;
+}
+.admin-body .inline-form input:focus,
+.admin-body .inline-form select:focus,
+.admin-body .edit-pop input:focus,
+.admin-body .data-table input:focus,
+.admin-body .data-table select:focus {
+  border-bottom-color: #a78bfa;
+  outline: none;
+}
+.admin-body .inline-form input::placeholder,
+.admin-body .edit-pop input::placeholder,
+.admin-body .data-table input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+/* 下拉选项仍用浅底深字, 保证可读 */
+.admin-body select option { color: #1a1a2e; background: #fff; }
+.admin-body input[type="checkbox"] { accent-color: #a78bfa; }
+
+/* ---------- 按钮 ---------- */
+.admin-body .btn { border-radius: 10px; }
+.admin-body .btn-primary {
+  background: linear-gradient(135deg, #6c3ff5, #5b21b6);
+  color: #fff;
+  border: none;
+}
+.admin-body .btn-primary:hover { opacity: 0.9; }
+.admin-body .btn-sm {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e2e2f0;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+.admin-body .btn-sm:hover { background: rgba(255, 255, 255, 0.2); }
+.admin-body .btn-danger { background: #dc2626; color: #fff; border: none; }
+.admin-body .btn-danger:hover { background: #b91c1c; }
+
+/* ---------- chip / 徽标 ---------- */
+.admin-body .chip { background: rgba(255, 255, 255, 0.1); color: #fff; }
+.admin-body .chip-warn { background: rgba(255, 149, 0, 0.22); color: #fbbf24; }
+.admin-body .badge-ok { background: rgba(52, 199, 89, 0.2); color: #4ade80; }
+.admin-body .badge-danger { background: rgba(255, 59, 48, 0.2); color: #f87171; }
+
+/* ---------- details 改名/设置密码 弹层 ---------- */
+.admin-body .edit-pop {
+  background: rgba(28, 28, 48, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+.admin-body .edit-pop input { border-bottom-color: rgba(255, 255, 255, 0.28); }
+.admin-body details[open] .edit-pop::before {
+  border-bottom-color: rgba(28, 28, 48, 0.98);
+}
+
+/* ---------- 复选框标签 / 其它 ---------- */
+.admin-body .cb { color: rgba(255, 255, 255, 0.85); }
+.admin-body .muted { color: rgba(255, 255, 255, 0.5); }
+.admin-body .flash { border-radius: 10px; }
+.admin-body .dl-btns .btn { min-width: 8rem; }
+
+/* ---------- 移动端 ---------- */
+@media (max-width: 768px) {
+  .admin-body .admin-layout { flex-direction: column; }
+  .admin-body .admin-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .admin-body .admin-nav { flex-direction: row; flex-wrap: wrap; gap: .3rem; }
+  .admin-body .admin-nav .anav {
+    padding: .3rem .6rem;
+    border-left: none;
+    border-bottom: 3px solid transparent;
+    font-size: .82rem;
+  }
+  .admin-body .admin-nav .anav:hover { border-bottom-color: #a78bfa; }
+  .admin-body .admin-content { padding: .75rem; }
+  .admin-body .inline-form { flex-direction: column; align-items: stretch; gap: .4rem; }
+  .admin-body .btn-sm { min-height: 34px; }
+}

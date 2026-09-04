@@ -55,7 +55,7 @@
           <a href="{{ url_for('reports.forecast') }}">趋势预测</a>
         </div>
       </details>
-      <a href="{{ url_for('settings.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('settings') }}">系统配置</a>
+      <a href="{{ url_for('settings.index') }}" class="nav-icon {{ 'active' if request.endpoint and request.endpoint.startswith('settings') }}" title="系统配置" aria-label="系统配置">⚙️</a>
     </div>
     {% if all_users %}
     <div class="topbar-user-switch">
