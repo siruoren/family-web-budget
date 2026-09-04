@@ -55,33 +55,15 @@
   }
 
   // ---- 公式校验 (从内联脚本迁移, 全局可用) ----
+  // 公式文本为描述性表达, 仅用于展示 (实际计算采用 services/formula.py 里
+  // 硬编码的双视角逻辑, 不解析此文本); 因此后端 update_formula 也只校验非空。
+  // 这里不再强制每个 token 必须是已存在的账目类型名 —— 否则默认描述性公式
+  // (含分号/圆括号修饰/逗号/语义标签如 "本月结余" "其他支出") 会被误判为非法。
   function validateFormula() {
     var input = document.getElementById("formula-input");
     if (!input) return true;
     var raw = input.value.trim();
     if (!raw) { toast("公式不能为空", "error"); return false; }
-    var section = document.getElementById("formula");
-    var types = [];
-    if (section && section.dataset.allTypes) {
-      try { types = JSON.parse(section.dataset.allTypes) || []; } catch (e) {}
-    }
-    var tokens = raw.split(/[+\-=\s×÷*\/（）()]+/).filter(function (t) { return t.length > 0; });
-    var unknown = [];
-    for (var i = 0; i < tokens.length; i++) {
-      var tk = tokens[i];
-      if (/^\d+(\.\d+)?$/.test(tk)) continue;
-      if (types.indexOf(tk) >= 0) continue;
-      var rest = null;
-      if (tk.indexOf("上月") === 0) rest = tk.slice(2);
-      else if (tk.indexOf("当月") === 0) rest = tk.slice(2);
-      if (rest !== null && rest.length > 0 && types.indexOf(rest) >= 0) continue;
-      var containsKnown = types.some(function (ty) { return tk.indexOf(ty) >= 0; });
-      if (!containsKnown) unknown.push(tk);
-    }
-    if (unknown.length) {
-      toast("输入有误: 项目 [" + unknown.join("、") + "] 不在全部账目类型中", "error");
-      return false;
-    }
     return true;
   }
   // 暴露给可能的内联调用

@@ -1,6 +1,6 @@
 {# 公式配置分片 - AJAX 替换整段; 类型列表通过 data-all-types 暴露给 JS #}
 <section id="formula" class="card" data-section="formula" data-all-types="{{ all_types|tojson }}">
-  <div class="card-hd">资产计算公式 <span class="muted">点击输入框可选择账目类型; 手动输入的类型若在全部账目类型中不存在将提示有误</span></div>
+  <div class="card-hd">资产计算公式 <span class="muted">公式为描述性文本, 仅用于展示; 实际计算采用固定双视角逻辑 (见 services/formula.py)</span></div>
   <div class="card-body">
     <form method="post" action="{{ url_for('settings.update_formula') }}" class="formula-form" id="formula-form"
           data-api="1" data-validate-formula="1">
@@ -27,6 +27,6 @@
       <button type="button" class="chip chip-formula" data-insert="-">-</button>
       <button type="button" class="chip chip-formula" data-insert="=">=</button>
     </div>
-    <p class="muted">默认: 上月储蓄总和+当月收入-当月储蓄总和=支出; 若支出条目合计≠公式结果, 差额计入"支出(其他)"</p>
+    <p class="muted">示例 (即默认值): 资产总和(本月)-资产总和(上月)=本月结余(储蓄视角); 当月收入-当月支出=本月结余(收支视角); 差额=其他支出; 资产总和=有手动值取手动值,否则=储蓄+理财</p>
   </div>
 </section>
