@@ -57,6 +57,14 @@
 
   // Typing detection (password field acts as email field for character reactions)
   if (passwordInput) {
+    // mousedown 主动触发"角色互相看"过渡动画。
+    // 背景: autofocus 或已聚焦时点击 password 不会再次派发 focus 事件,
+    // 导致"直接点密码框"无过渡动画,而"先点用户下拉再点密码框"(select 抢焦点→password blur→重新 focus)却有动画,
+    // 两者不一致。绑定 mousedown 后,无论是否已聚焦,主动点击都会重置 setTyping(true),
+    // 与"切换焦点后点击"路径行为一致。
+    passwordInput.addEventListener("mousedown", function () {
+      setTyping(true);
+    });
     passwordInput.addEventListener("focus", function () {
       isPasswordFocused = true;
       setTyping(true);
