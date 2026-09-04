@@ -28,7 +28,15 @@
 
 <section class="charts-row">
   <div class="card chart-card">
-    <div class="card-hd">近 12 月趋势</div>
+    <div class="card-hd">
+      近 12 月趋势
+      <select id="itemFilter" class="pie-type-filter" style="float:right;font-size:.8rem;">
+        <option value="">菜单合计</option>
+        {% for it in items %}
+        <option value="{{ it.id }}">{{ it.name }} ({{ it.type }})</option>
+        {% endfor %}
+      </select>
+    </div>
     <canvas id="trendChart" height="120"></canvas>
   </div>
   <div class="card chart-card">
@@ -109,24 +117,41 @@
 <script>
   var SERIES = {{ series|tojson }};
   var PIE_DATA = {{ pie_data|tojson }};
+  var ITEM_SERIES = {{ item_series_map|tojson }};
 
-  // 近 12 月趋势
-  (function () {
-    var c1 = document.getElementById("trendChart");
-    if (c1 && window.Chart) {
-      new Chart(c1, {
-        type: "line",
-        data: {
-          labels: SERIES.map(function (s) { return s.label; }),
-          datasets: [
-            { label: "合计", data: SERIES.map(function(s){return s.value;}),
-              borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.1)", tension: .3 }
-          ]
-        },
-        options: { responsive: true, plugins: { legend: { position: "bottom" } }, scales: { y: { beginAtZero: true } } }
-      });
+  // 近 12 月趋势 (按选中字段切换: 菜单合计 / 单条目历史)
+  var trendChart = null;
+  function renderTrend(itemId) {
+    var canvas = document.getElementById("trendChart");
+    if (!canvas || !window.Chart) return;
+    var data, label;
+    if (itemId && ITEM_SERIES[itemId]) {
+      data = ITEM_SERIES[itemId].map(function (s) { return s.value; });
+      label = "选中条目";
+    } else {
+      data = SERIES.map(function (s) { return s.value; });
+      label = "菜单合计";
     }
-  })();
+    var labels = SERIES.map(function (s) { return s.label; });
+    if (trendChart) { trendChart.destroy(); trendChart = null; }
+    trendChart = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels: labels,
+        datasets: [
+          { label: label, data: data,
+            borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.1)", tension: .3 }
+        ]
+      },
+      options: { responsive: true, plugins: { legend: { position: "bottom" } }, scales: { y: { beginAtZero: true } } }
+    });
+  }
+  renderTrend("");
+
+  var itemSel = document.getElementById("itemFilter");
+  if (itemSel) {
+    itemSel.addEventListener("change", function () { renderTrend(itemSel.value); });
+  }
 
   // 当月条目占比 (带类型筛选)
   var pieChart = null;

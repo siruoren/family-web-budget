@@ -35,13 +35,14 @@ def create_app(config_name: str = "default") -> Flask:
     def _round(v, n=2):
         return round(float(v or 0), n)
 
-    # 注册蓝图 (Views) - v2 仅保留四块 + 认证 + 自定义菜单
+    # 注册蓝图 (Views) - v2 仅保留四块 + 认证 + 自定义菜单 + 报表
     from .views.dashboard import bp as dashboard_bp
     from .views.entries import bp as entries_bp
     from .views.analysis import bp as analysis_bp
     from .views.settings import bp as settings_bp
     from .views.auth import bp as auth_bp
     from .views.menu import bp as menu_bp
+    from .views.reports import bp as reports_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(entries_bp)
@@ -49,6 +50,7 @@ def create_app(config_name: str = "default") -> Flask:
     app.register_blueprint(settings_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(menu_bp)
+    app.register_blueprint(reports_bp)
 
     # 上下文: 注入用户 / 侧边栏 / 月份选择等通用变量
     from .services.context import inject_globals, ensure_user
@@ -117,16 +119,18 @@ def _seed_defaults():
                 db.session.add(ItemType(
                     name=t, sort_order=order, is_active=True,
                 ))
-        # 确保三个默认类型存在
-        defaults = ["收入", "支出", "结余"]
-        existing = {t.name for t in db.session.query(ItemType).all()}
-        for d in defaults:
-            if d not in existing:
-                order += 1
-                db.session.add(ItemType(
-                    name=d, sort_order=order, is_active=True,
-                ))
         db.session.commit()
+
+    # 始终确保四个默认类型存在 (收入/支出/结余/储蓄) - 已存在则跳过
+    existing = {t.name for t in db.session.query(ItemType).all()}
+    order = db.session.query(ItemType).count()
+    for d in ["收入", "支出", "结余", "储蓄"]:
+        if d not in existing:
+            order += 1
+            db.session.add(ItemType(
+                name=d, sort_order=order, is_active=True,
+            ))
+    db.session.commit()
 
     # 月末结余默认条目 (让用户开箱即可在月度条目录入页手动填写月末结余)
     # 旧库已存在同名同类型同属主条目则跳过 (兼容历史导入的"现金结余"等不重名)
@@ -150,6 +154,26 @@ def _seed_defaults():
         ))
         db.session.commit()
 
+    # 月末储蓄默认条目 (储蓄总和的核心来源, 自动从上月结转)
+    has_saving = db.session.execute(
+        select(AccountItem.id).where(
+            AccountItem.name == "月末储蓄",
+            AccountItem.type == "储蓄",
+            AccountItem.owner == "家庭",
+        ).limit(1)
+    ).first()
+    if not has_saving:
+        max_order_s = db.session.execute(
+            select(AccountItem).where(AccountItem.type == "储蓄")
+            .order_by(AccountItem.sort_order.desc()).limit(1)
+        ).scalars().first()
+        next_order_s = (max_order_s.sort_order + 1) if max_order_s else 0
+        db.session.add(AccountItem(
+            name="月末储蓄", type="储蓄", owner="家庭",
+            note="月末总资产(储蓄), 自动从上月结转", sort_order=next_order_s, is_active=True,
+        ))
+        db.session.commit()
+
 
 def _seed_menu():
     """首次启动补齐: 默认左侧菜单结构 (收入/支出/结余 三组)"""
@@ -165,6 +189,8 @@ def _seed_menu():
         ("家庭支出", "支出", "家庭", 3, True),
         ("结余", "", "", 4, True),
         ("家庭结余", "结余", "家庭", 5, True),
+        ("储蓄", "", "", 6, True),
+        ("家庭储蓄", "储蓄", "家庭", 7, True),
     ]
     parents = {}
     for name, ftype, fowner, order, active in menus:

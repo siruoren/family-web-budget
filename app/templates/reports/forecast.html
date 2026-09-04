@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}趋势预测 · 未来 {{ data.forecasts|length }} 月{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h2>趋势预测 <small>基于近 24 月历史 · {{ current_user_name }}</small></h2>
+  <div class="page-actions">
+    <form class="period-form auto-submit" method="get" action="{{ url_for('reports.forecast') }}">
+      <label>预测月数
+        <select name="months" title="预测月数">
+          <option value="3" {{ 'selected' if data.forecasts|length == 3 }}>3 月</option>
+          <option value="6" {{ 'selected' if data.forecasts|length == 6 }}>6 月</option>
+          <option value="12" {{ 'selected' if data.forecasts|length == 12 }}>12 月</option>
+        </select>
+      </label>
+    </form>
+  </div>
+</div>
+
+{% if data.msg %}
+<section class="alert alert-warning"><strong>提示:</strong> {{ data.msg }}</section>
+{% endif %}
+
+{% if data.forecasts %}
+
+{# ===== 风险提示 ===== #}
+<section class="card {{ 'is-anomaly' if data.risks|length > 1 }}">
+  <div class="card-hd">风险提示</div>
+  <div class="card-body">
+    <ul style="margin:0;padding-left:1.2rem">
+    {% for r in data.risks %}
+      <li>{{ r }}</li>
+    {% endfor %}
+    </ul>
+  </div>
+</section>
+
+{# ===== 资产增长预判 ===== #}
+<section class="stats-grid">
+  <div class="stat-card"><div class="stat-label">当前储蓄</div><div class="stat-value">{{ data.growth_pred.current|fmt_money }}</div></div>
+  <div class="stat-card stat-savings"><div class="stat-label">预测期末储蓄</div><div class="stat-value">{{ data.growth_pred.future_6m|fmt_money }}</div></div>
+  <div class="stat-card"><div class="stat-label">预期变化</div><div class="stat-value">{{ data.growth_pred.delta|fmt_money }}</div></div>
+  <div class="stat-card"><div class="stat-label">增长率</div><div class="stat-value">{{ data.growth_pred.growth_rate }}%</div></div>
+  <div class="stat-card"><div class="stat-label">趋势预判</div><div class="stat-value">{{ data.growth_pred.trend }}</div></div>
+</section>
+
+{# ===== 回归斜率 ===== #}
+<section class="card">
+  <div class="card-hd">历史趋势斜率 (每月变化量)</div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>指标</th><th>斜率 (每月)</th><th>解读</th></tr></thead>
+      <tbody>
+        <tr><td>储蓄</td><td>{{ data.slopes.savings|fmt_money }}</td><td>{{ '上升' if data.slopes.savings > 0 else ('下降' if data.slopes.savings < 0 else '平稳') }}</td></tr>
+        <tr><td>收入</td><td>{{ data.slopes.income|fmt_money }}</td><td>{{ '上升' if data.slopes.income > 0 else ('下降' if data.slopes.income < 0 else '平稳') }}</td></tr>
+        <tr><td>支出</td><td>{{ data.slopes.expense|fmt_money }}</td><td>{{ '上升' if data.slopes.expense > 0 else ('下降' if data.slopes.expense < 0 else '平稳') }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{# ===== 未来走势预测图 ===== #}
+<section class="card chart-card">
+  <div class="card-hd">未来走势量化预测 (历史 + 外推)</div>
+  <canvas id="forecastChart" height="160"></canvas>
+</section>
+
+{# ===== 预测明细表 ===== #}
+<section class="card">
+  <div class="card-hd">预测明细 (未来 {{ data.forecasts|length }} 月)</div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>月份</th><th>预测收入</th><th>预测支出</th><th>预测储蓄</th></tr></thead>
+      <tbody>
+      {% for f in data.forecasts %}
+      <tr>
+        <td>{{ f.label }}</td>
+        <td>{{ f.income_forecast|fmt_money }}</td>
+        <td>{{ f.expense_forecast|fmt_money }}</td>
+        <td>{{ f.savings_forecast|fmt_money }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<p class="muted" style="font-size:.8rem">注: 预测基于线性回归, 仅作参考; 实际财务受多重因素影响, 不构成投资建议。</p>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if data.forecasts %}
+<script>
+  var HIST = {{ data.sample_series|tojson }};
+  var FORE = {{ data.forecasts|tojson }};
+  (function () {
+    var c = document.getElementById("forecastChart");
+    if (!c || !window.Chart) return;
+    var histLabels = HIST.map(function (s) { return s.label; });
+    var foreLabels = FORE.map(function (f) { return f.label; });
+    var labels = histLabels.concat(foreLabels);
+    // 历史段填充到对应位置, 预测段用 null 占位形成断点
+    var histSav = HIST.map(function (s) { return s.savings; });
+    var histInc = HIST.map(function (s) { return s.income; });
+    var histExp = HIST.map(function (s) { return s.expense; });
+    var histLen = HIST.length;
+    var foreSav = new Array(histLen - 1).fill(null).concat([HIST[histLen - 1].savings]).concat(FORE.map(function (f) { return f.savings_forecast; }));
+    var foreInc = new Array(histLen - 1).fill(null).concat([HIST[histLen - 1].income]).concat(FORE.map(function (f) { return f.income_forecast; }));
+    var foreExp = new Array(histLen - 1).fill(null).concat([HIST[histLen - 1].expense]).concat(FORE.map(function (f) { return f.expense_forecast; }));
+
+    new Chart(c, {
+      type: "line",
+      data: {
+        labels: labels,
+        datasets: [
+          { label: "历史储蓄", data: histSav.concat(new Array(FORE.length).fill(null)), borderColor: "#7c3aed", tension: .3, spanGaps: false },
+          { label: "预测储蓄", data: foreSav, borderColor: "#7c3aed", borderDash: [6, 4], tension: .3, spanGaps: false },
+          { label: "历史收入", data: histInc.concat(new Array(FORE.length).fill(null)), borderColor: "#16a34a", tension: .3, spanGaps: false },
+          { label: "预测收入", data: foreInc, borderColor: "#16a34a", borderDash: [6, 4], tension: .3, spanGaps: false },
+          { label: "历史支出", data: histExp.concat(new Array(FORE.length).fill(null)), borderColor: "#dc2626", tension: .3, spanGaps: false },
+          { label: "预测支出", data: foreExp, borderColor: "#dc2626", borderDash: [6, 4], tension: .3, spanGaps: false }
+        ]
+      },
+      options: { responsive: true, plugins: { legend: { position: "bottom" } }, scales: { y: { beginAtZero: true } } }
+    });
+  })();
+</script>
+{% endif %}
+{% endblock %}

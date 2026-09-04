@@ -10,9 +10,13 @@ INSTANCE_DIR = BASE_DIR / "instance"
 UPLOAD_DIR = BASE_DIR / "uploads"
 EXPORT_DIR = BASE_DIR / "exports"
 
-INSTANCE_DIR.mkdir(exist_ok=True)
-UPLOAD_DIR.mkdir(exist_ok=True)
-EXPORT_DIR.mkdir(exist_ok=True)
+# 沙箱 broker 对已存在目录 mkdir(exist_ok=True) 会误报 EEXIST; 先判断再创建
+for _d in (INSTANCE_DIR, UPLOAD_DIR, EXPORT_DIR):
+    if not _d.exists():
+        try:
+            _d.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
 
 CONFIG_YML = BASE_DIR / "config.yml"
 

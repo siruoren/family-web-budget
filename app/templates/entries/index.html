@@ -46,7 +46,8 @@
 <section class="stats-grid">
   <div class="stat-card stat-income"><div class="stat-label">当月收入</div><div class="stat-value">{{ summary.income_total|fmt_money }}</div></div>
   <div class="stat-card stat-expense"><div class="stat-label">当月支出</div><div class="stat-value">{{ summary.expense_total|fmt_money }}</div></div>
-  <div class="stat-card stat-balance"><div class="stat-label">当月结余</div><div class="stat-value">{{ summary.balance_total|fmt_money }}</div></div>
+  <div class="stat-card stat-balance"><div class="stat-label">当月储蓄总和</div><div class="stat-value">{{ summary.savings_total|fmt_money }}</div></div>
+  <div class="stat-card"><div class="stat-label">当月结余</div><div class="stat-value">{{ summary.balance_total|fmt_money }}</div></div>
   <div class="stat-card"><div class="stat-label">净额(收-支)</div><div class="stat-value">{{ (summary.income_total - summary.expense_total)|fmt_money }}</div></div>
 </section>
 
@@ -70,20 +71,22 @@
   </div>
 </section>
 
-{# ===== 公式计算卡片 ===== #}
+{# ===== 公式计算卡片 (双视角) ===== #}
 <section class="card formula-card {{ 'is-anomaly' if calc.anomaly }}">
   <div class="card-hd">
-    资产公式 · {{ calc.formula }}
+    资产公式 · 双视角核算
     {% if calc.anomaly %}<span class="badge badge-danger">数据异常</span>{% endif %}
   </div>
   <div class="formula-grid">
-    <div><span class="muted">上月结余</span><b>{{ calc.last_balance|fmt_money }}</b></div>
+    <div><span class="muted">上月储蓄总和</span><b>{{ calc.last_savings|fmt_money }}</b></div>
+    <div><span class="muted">当月储蓄总和</span><b>{{ calc.savings_total|fmt_money }}</b></div>
+    <div><span class="muted">储蓄视角结余</span><b>{{ calc.savings_balance|fmt_money }}</b></div>
     <div><span class="muted">当月收入</span><b>{{ calc.income|fmt_money }}</b></div>
-    <div><span class="muted">当月结余</span><b>{{ calc.balance|fmt_money }}</b></div>
-    <div><span class="muted">公式支出</span><b>{{ calc.calculated_expense|fmt_money }}</b></div>
-    <div><span class="muted">支出合计</span><b>{{ calc.expense_items|fmt_money }}</b></div>
-    <div><span class="muted">差额(支出其他)</span><b>{{ calc.other_expense|fmt_money }}</b></div>
+    <div><span class="muted">当月支出</span><b>{{ calc.expense|fmt_money }}</b></div>
+    <div><span class="muted">收支视角结余</span><b>{{ calc.flow_balance|fmt_money }}</b></div>
+    <div><span class="muted">其他支出(差额)</span><b>{{ calc.other_expense|fmt_money }}</b></div>
   </div>
+  <p class="muted" style="font-size:.8rem;margin:.4rem 0 0">储蓄视角: 当月储蓄总和-上月储蓄总和=本月结余; 收支视角: 当月收入-当月支出=本月结余; 差额=其他支出</p>
 </section>
 
 {# ===== Excel 表单式条目填写 ===== #}
@@ -126,11 +129,13 @@
             <td class="c-type"><span class="chip chip-{{ 'income' if it.type == '收入' else ('expense' if it.type == '支出' else 'balance') }}">{{ it.type }}</span></td>
             <td class="c-owner">{{ it.owner }}</td>
             <td class="c-val">
+              {% set carry = carry_map.get(it.id) if carry_map else none %}
               <input type="number" step="0.01" name="item_{{ it.id }}"
                      value="{{ a.value if a and a.value is not none else '' }}"
                      data-rt="asset" data-rid="{{ it.id }}"
                      {{ 'disabled' if locked_by_other }}
-                     placeholder="0.00" class="table-input">
+                     {% if carry %}placeholder="结转 {{ carry|fmt_money }}" data-carry="{{ carry }}"{% else %}placeholder="0.00"{% endif %}
+                     class="table-input{{ ' input-carry' if carry }}">
             </td>
             <td class="c-note">
               <input type="text" name="note_{{ it.id }}"
@@ -159,6 +164,7 @@
               <span class="sum-chip sum-income">收入 <b id="sumIncome">0.00</b></span>
               <span class="sum-chip sum-expense">支出 <b id="sumExpense">0.00</b></span>
               <span class="sum-chip sum-balance">结余 <b id="sumBalance">0.00</b></span>
+              <span class="sum-chip sum-savings">储蓄 <b id="sumSavings">0.00</b></span>
               <span class="sum-chip sum-net">净额(收-支) <b id="sumNet">0.00</b></span>
             </td>
           </tr>
@@ -194,7 +200,8 @@
         datasets: [
           { label: "收入", data: SERIES.map(function(s){return s.income;}), borderColor: "#16a34a", backgroundColor: "rgba(22,163,74,.1)", tension: .3 },
           { label: "支出", data: SERIES.map(function(s){return s.expense;}), borderColor: "#dc2626", backgroundColor: "rgba(220,38,38,.1)", tension: .3 },
-          { label: "结余", data: SERIES.map(function(s){return s.balance;}), borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.1)", tension: .3 }
+          { label: "结余", data: SERIES.map(function(s){return s.balance;}), borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.1)", tension: .3 },
+          { label: "储蓄", data: SERIES.map(function(s){return s.savings || 0;}), borderColor: "#7c3aed", backgroundColor: "rgba(124,58,237,.1)", tension: .3 }
         ]
       },
       options: { responsive: true, plugins: { legend: { position: "bottom" } }, scales: { y: { beginAtZero: true } } }
@@ -249,10 +256,23 @@ if (pieSel) {
   var sumNet = document.getElementById('sumNet');
   // 动态收集所有出现过的类型 (兼容用户自定义类型, 非收/支/结余的归到"其他")
   function calcTotal() {
-    var sums = { "收入": 0, "支出": 0, "结余": 0, "其他": 0 };
+    var sums = { "收入": 0, "支出": 0, "结余": 0, "储蓄": 0, "其他": 0 };
     inputs.forEach(function (el) {
       var v = parseFloat(el.value);
-      if (isNaN(v)) return;
+      if (isNaN(v)) {
+        // 储蓄结转占位: 未输入但有 data-carry 时计入结转值
+        var carry = el.getAttribute('data-carry');
+        if (carry) {
+          var cv = parseFloat(carry);
+          if (!isNaN(cv)) {
+            var tr2 = el.closest('tr');
+            var t2 = tr2 ? tr2.getAttribute('data-type') : '';
+            if (!(t2 in sums)) t2 = "其他";
+            sums[t2] += cv;
+          }
+        }
+        return;
+      }
       var tr = el.closest('tr');
       var t = tr ? tr.getAttribute('data-type') : '';
       if (!(t in sums)) t = "其他";
@@ -261,6 +281,8 @@ if (pieSel) {
     if (sumIncome) sumIncome.textContent = sums["收入"].toFixed(2);
     if (sumExpense) sumExpense.textContent = sums["支出"].toFixed(2);
     if (sumBalance) sumBalance.textContent = sums["结余"].toFixed(2);
+    var sumSavings = document.getElementById('sumSavings');
+    if (sumSavings) sumSavings.textContent = sums["储蓄"].toFixed(2);
     if (sumNet) sumNet.textContent = (sums["收入"] - sums["支出"]).toFixed(2);
   }
   inputs.forEach(function (el) { el.addEventListener('input', calcTotal); });

@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}年度汇总 · {{ data.year }}年{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h2>年度汇总 <small>{{ data.year }}年 · {{ current_user_name }}</small></h2>
+  <div class="page-actions">
+    <form class="period-form auto-submit" method="get" action="{{ url_for('reports.annual') }}">
+      <select name="year" title="年份">{% for y in available_years %}<option value="{{ y }}" {{ 'selected' if y == data.year }}>{{ y }}年</option>{% endfor %}</select>
+    </form>
+  </div>
+</div>
+
+{# ===== 年度财务大盘 ===== #}
+<section class="stats-grid">
+  <div class="stat-card stat-income"><div class="stat-label">年度收入</div><div class="stat-value">{{ data.annual_income|fmt_money }}</div></div>
+  <div class="stat-card stat-expense"><div class="stat-label">年度支出</div><div class="stat-value">{{ data.annual_expense|fmt_money }}</div></div>
+  <div class="stat-card stat-savings"><div class="stat-label">年末储蓄</div><div class="stat-value">{{ data.annual_savings_end|fmt_money }}</div></div>
+  <div class="stat-card"><div class="stat-label">年度净额</div><div class="stat-value">{{ data.annual_net|fmt_money }}</div></div>
+  <div class="stat-card"><div class="stat-label">储蓄增长</div><div class="stat-value">{{ data.annual_savings_growth|fmt_money }}</div></div>
+</section>
+
+{# ===== 同比分析 (vs 上一年) ===== #}
+<section class="card">
+  <div class="card-hd">同比分析 (vs {{ data.year - 1 }}年)</div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>指标</th><th>{{ data.year }}年</th><th>{{ data.year - 1 }}年</th><th>同比</th></tr></thead>
+      <tbody>
+        <tr><td>收入</td><td>{{ data.annual_income|fmt_money }}</td><td>{{ data.yoy.last_year_income|fmt_money }}</td><td><span class="chip {{ 'chip-income' if data.yoy.income > 0 else 'chip-expense' }}">{{ data.yoy.income }}%</span></td></tr>
+        <tr><td>支出</td><td>{{ data.annual_expense|fmt_money }}</td><td>{{ data.yoy.last_year_expense|fmt_money }}</td><td><span class="chip {{ 'chip-expense' if data.yoy.expense > 0 else 'chip-income' }}">{{ data.yoy.expense }}%</span></td></tr>
+        <tr><td>年末储蓄</td><td>{{ data.annual_savings_end|fmt_money }}</td><td>{{ data.yoy.last_year_savings_end|fmt_money }}</td><td><span class="chip {{ 'chip-income' if data.yoy.savings > 0 else 'chip-expense' }}">{{ data.yoy.savings }}%</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{# ===== 年度资产复盘 (全年月度走势) ===== #}
+<section class="card chart-card">
+  <div class="card-hd">年度资产复盘 (月度走势)</div>
+  <canvas id="annualChart" height="140"></canvas>
+</section>
+
+{# ===== 月度环比 ===== #}
+<section class="card">
+  <div class="card-hd">月度环比分析</div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>月份</th><th>收入环比</th><th>支出环比</th><th>储蓄环比</th></tr></thead>
+      <tbody>
+      {% for m in data.mom %}
+      <tr>
+        <td>{{ m.label }}</td>
+        <td>{{ m.income_mom }}%</td>
+        <td>{{ m.expense_mom }}%</td>
+        <td>{{ m.savings_mom }}%</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="empty-row">本年暂无数据</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var SERIES = {{ data.series|tojson }};
+  (function () {
+    var c = document.getElementById("annualChart");
+    if (!c || !window.Chart) return;
+    new Chart(c, {
+      type: "line",
+      data: {
+        labels: SERIES.map(function (s) { return s.label; }),
+        datasets: [
+          { label: "收入", data: SERIES.map(function(s){return s.income;}), borderColor: "#16a34a", backgroundColor: "rgba(22,163,74,.1)", tension: .3 },
+          { label: "支出", data: SERIES.map(function(s){return s.expense;}), borderColor: "#dc2626", backgroundColor: "rgba(220,38,38,.1)", tension: .3 },
+          { label: "储蓄", data: SERIES.map(function(s){return s.savings;}), borderColor: "#7c3aed", backgroundColor: "rgba(124,58,237,.1)", tension: .3 },
+          { label: "结余", data: SERIES.map(function(s){return s.balance;}), borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.1)", tension: .3 }
+        ]
+      },
+      options: { responsive: true, plugins: { legend: { position: "bottom" } }, scales: { y: { beginAtZero: true } } }
+    });
+  })();
+</script>
+{% endblock %}

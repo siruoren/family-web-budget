@@ -11,7 +11,9 @@ from sqlalchemy import select
 
 from .. import db
 from ..models import AccountItem, Asset, EditLock
-from ..services.formula import calculate_month, get_all_types
+from ..services.formula import (
+    calculate_month, get_all_types, get_last_month_value,
+)
 from ..services.analysis import (
     period_series, monthly_summary, missing_items, _prev_month,
     get_available_years, last_12m_start,
@@ -60,6 +62,17 @@ def index():
     ).scalars().all()
     asset_map = {a.account_item_id: a for a in assets}
 
+    # 储蓄类条目自动结转: 当月无值时预填上月值 (用于模板 placeholder 提示)
+    carry_map: dict[int, float] = {}
+    for it in all_items:
+        if it.type != "储蓄":
+            continue
+        if it.id in asset_map:
+            continue  # 当月已填, 不结转
+        last_val = get_last_month_value(year, month, uid, it.id)
+        if last_val:
+            carry_map[it.id] = round(last_val, 2)
+
     calc = calculate_month(year, month, uid)
     all_types = get_all_types()
 
@@ -87,6 +100,7 @@ def index():
     return render_template(
         "entries/index.html", year=year, month=month,
         all_items=all_items, asset_map=asset_map,
+        carry_map=carry_map,
         calc=calc, all_types=all_types,
         current_type=item_type, current_owner=owner,
         locks=locks, my_user_id=str(uid),
@@ -167,9 +181,16 @@ def save():
     asset_map = {a.account_item_id: a for a in existing}
 
     saved, skipped, conflicts = 0, 0, []
+    carried = 0
     for it in items:
         raw = request.form.get(f"item_{it.id}", "").strip()
         note = request.form.get(f"note_{it.id}", "").strip()
+        # 储蓄类自动结转: 空值时用上月值填充 (手动输入优先)
+        if not raw and it.type == "储蓄":
+            last_val = get_last_month_value(year, month, uid, it.id)
+            if last_val:
+                raw = str(last_val)
+                carried += 1
         if not raw:
             a = asset_map.pop(it.id, None)
             if a:
@@ -201,7 +222,12 @@ def save():
     if conflicts:
         names = "、".join(f"{c['name']}(被{c['who']}锁定)" for c in conflicts)
         flash(f"以下条目被他人锁定已跳过: {names}", "warning")
-    flash(f"已保存 {saved} 条 {year}年{month}月 数据" + (f", 跳过 {skipped} 条" if skipped else ""), "success")
+    msg = f"已保存 {saved} 条 {year}年{month}月 数据"
+    if carried:
+        msg += f", 储蓄自动结转 {carried} 条"
+    if skipped:
+        msg += f", 跳过 {skipped} 条"
+    flash(msg, "success")
 
     params = {}
     if item_type:

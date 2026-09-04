@@ -78,6 +78,9 @@ def view(menu_id):
     # 各条目近 12 月均值/合计
     item_stats = _item_stats(items, uid)
 
+    # 各条目近 12 月逐月时序 (供前端按选中字段切换趋势图)
+    item_series_map = _item_series_map(items, yf, mf, year, month, uid)
+
     # 汇总
     key = get_current_user_key()
     total = round(sum(decrypt_float(a.value_enc, key) for a in assets), 2)
@@ -90,9 +93,41 @@ def view(menu_id):
         menu=mi, year=year, month=month,
         items=items, asset_map=asset_map,
         series=series, pie_data=pie_data,
-        item_stats=item_stats, total=total,
+        item_stats=item_stats, item_series_map=item_series_map,
+        total=total,
         available_years=available_years, all_types=all_types,
     )
+
+
+def _item_series_map(items, yf, mf, yt, mt, user_id):
+    """每个条目近 N 月逐月时序 {item_id: [{label,value}, ...]}"""
+    if not items:
+        return {}
+    ids = [it.id for it in items]
+    rows = db.session.execute(
+        select(Asset.account_item_id, Asset.year, Asset.month, Asset.value_enc).where(
+            Asset.user_id == user_id,
+            Asset.account_item_id.in_(ids),
+        )
+    ).all()
+    key = get_current_user_key()
+    periods = _periods_range(yf, mf, yt, mt)
+    period_set = set(periods)
+    by_item: dict[int, dict[tuple, float]] = {}
+    for item_id, y, m, enc in rows:
+        if (y, m) not in period_set:
+            continue
+        val = decrypt_float(enc, key)
+        by_item.setdefault(item_id, {})[(y, m)] = val
+    out = {}
+    for it in items:
+        per = by_item.get(it.id, {})
+        out[it.id] = [
+            {"year": y, "month": m, "label": f"{y}-{m:02d}",
+             "value": round(per.get((y, m), 0), 2)}
+            for y, m in periods
+        ]
+    return out
 
 
 def _menu_series(yf, mf, yt, mt, user_id, item_id_list):

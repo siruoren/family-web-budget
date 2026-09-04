@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}可视化趋势 · {{ data.yf }}-{{ '%02d'%data.mf }} ~ {{ data.yt }}-{{ '%02d'%data.mt }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h2>可视化趋势 <small>{{ data.yf }}-{{ '%02d'%data.mf }} ~ {{ data.yt }}-{{ '%02d'%data.mt }} · {{ current_user_name }}</small></h2>
+  <div class="page-actions">
+    <form class="period-form auto-submit" method="get" action="{{ url_for('reports.trends') }}">
+      <select name="yf" title="起始年">{% for y in range(current_year - 5, current_year + 1) %}<option value="{{ y }}" {{ 'selected' if y == data.yf }}>{{ y }}</option>{% endfor %}</select>
+      <select name="mf" title="起始月">{% for m in range(1, 13) %}<option value="{{ m }}" {{ 'selected' if m == data.mf }}>{{ m }}月</option>{% endfor %}</select>
+      <span class="muted">至</span>
+      <select name="yt" title="结束年">{% for y in range(current_year - 5, current_year + 1) %}<option value="{{ y }}" {{ 'selected' if y == data.yt }}>{{ y }}</option>{% endfor %}</select>
+      <select name="mt" title="结束月">{% for m in range(1, 13) %}<option value="{{ m }}" {{ 'selected' if m == data.mt }}>{{ m }}月</option>{% endfor %}</select>
+    </form>
+  </div>
+</div>
+
+{# ===== 量化指标 ===== #}
+<section class="stats-grid">
+  <div class="stat-card"><div class="stat-label">区间月数</div><div class="stat-value">{{ data.series|length }}</div></div>
+  <div class="stat-card stat-savings"><div class="stat-label">储蓄均值</div><div class="stat-value">{{ data.sav_avg|fmt_money }}</div></div>
+  <div class="stat-card"><div class="stat-label">储蓄波动(标准差)</div><div class="stat-value">{{ data.sav_std|fmt_money }}</div></div>
+  <div class="stat-card"><div class="stat-label">波动率</div><div class="stat-value">{{ data.sav_volatility_rate }}%</div></div>
+</section>
+
+{# ===== 全维度动态曲线 ===== #}
+<section class="card chart-card">
+  <div class="card-hd">全维度动态曲线</div>
+  <canvas id="multiChart" height="160"></canvas>
+</section>
+
+{# ===== 资产波动视图 (月度储蓄环比柱状) ===== #}
+<section class="card chart-card">
+  <div class="card-hd">资产波动视图 (月度储蓄环比)</div>
+  <canvas id="volatilityChart" height="120"></canvas>
+</section>
+
+{# ===== 占比图表 ===== #}
+<section class="grid-2col">
+  <div class="card">
+    <div class="card-hd">类型占比 (区间累计)</div>
+    <canvas id="typeShareChart" height="120"></canvas>
+  </div>
+  <div class="card">
+    <div class="card-hd">属主占比 (区间累计)</div>
+    <canvas id="ownerShareChart" height="120"></canvas>
+  </div>
+</section>
+
+{# ===== 波动明细表 ===== #}
+<section class="card">
+  <div class="card-hd">月度波动明细</div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>月份</th><th>收入</th><th>支出</th><th>储蓄</th><th>储蓄环比</th></tr></thead>
+      <tbody>
+      {% for v in data.volatility %}
+      <tr>
+        <td>{{ v.label }}</td>
+        <td>{{ v.income|fmt_money }}</td>
+        <td>{{ v.expense|fmt_money }}</td>
+        <td>{{ v.savings|fmt_money }}</td>
+        <td>{{ v.savings_change|fmt_money }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="empty-row">区间内暂无数据</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var SERIES = {{ data.series|tojson }};
+  var VOLAT = {{ data.volatility|tojson }};
+  var TYPE_SHARE = {{ data.type_share|tojson }};
+  var OWNER_SHARE = {{ data.owner_share|tojson }};
+  var colors = ["#16a34a","#dc2626","#2563eb","#7c3aed","#d97706","#0891b2","#db2777","#65a30d"];
+
+  // 全维度曲线
+  (function () {
+    var c = document.getElementById("multiChart");
+    if (!c || !window.Chart) return;
+    new Chart(c, {
+      type: "line",
+      data: {
+        labels: SERIES.map(function (s) { return s.label; }),
+        datasets: [
+          { label: "收入", data: SERIES.map(function(s){return s.income;}), borderColor: "#16a34a", backgroundColor: "rgba(22,163,74,.1)", tension: .3 },
+          { label: "支出", data: SERIES.map(function(s){return s.expense;}), borderColor: "#dc2626", backgroundColor: "rgba(220,38,38,.1)", tension: .3 },
+          { label: "储蓄", data: SERIES.map(function(s){return s.savings;}), borderColor: "#7c3aed", backgroundColor: "rgba(124,58,237,.1)", tension: .3 },
+          { label: "结余", data: SERIES.map(function(s){return s.balance;}), borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.1)", tension: .3 }
+        ]
+      },
+      options: { responsive: true, plugins: { legend: { position: "bottom" } }, scales: { y: { beginAtZero: true } } }
+    });
+  })();
+
+  // 资产波动 (柱状)
+  (function () {
+    var c = document.getElementById("volatilityChart");
+    if (!c || !window.Chart) return;
+    new Chart(c, {
+      type: "bar",
+      data: {
+        labels: VOLAT.map(function (v) { return v.label; }),
+        datasets: [{ label: "储蓄环比", data: VOLAT.map(function(v){return v.savings_change;}),
+          backgroundColor: VOLAT.map(function(v){return v.savings_change >= 0 ? "#16a34a" : "#dc2626";}) }]
+      },
+      options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { } } }
+    });
+  })();
+
+  function mkPie(id, data) {
+    var c = document.getElementById(id);
+    if (!c || !window.Chart) return;
+    var keys = Object.keys(data);
+    new Chart(c, {
+      type: "doughnut",
+      data: { labels: keys, datasets: [{ data: keys.map(function(k){return data[k];}), backgroundColor: colors }] },
+      options: { responsive: true, plugins: { legend: { position: "right" } } }
+    });
+  }
+  mkPie("typeShareChart", TYPE_SHARE);
+  mkPie("ownerShareChart", OWNER_SHARE);
+</script>
+{% endblock %}
