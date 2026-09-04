@@ -617,7 +617,7 @@ def download_template_csv():
          "note": "月度工资收入", "sort_order": 0, "is_active": "true"},
         {"name": "餐饮", "type": "支出", "owner": "家庭",
          "note": "日常饮食", "sort_order": 1, "is_active": "true"},
-        {"name": "现金结余", "type": "结余", "owner": "家庭",
+        {"name": "现金结余", "type": "储蓄", "owner": "家庭",
          "note": "月末现金", "sort_order": 2, "is_active": "true"},
     ]
     buf = _write_csv(rows, ["name", "type", "owner", "note",
@@ -640,7 +640,7 @@ def download_history_template_csv():
          "name": "工资", "value": 15000.00, "note": "1月工资"},
         {"year": 2024, "month": 1, "type": "支出", "owner": "家庭",
          "name": "餐饮", "value": 3200.50, "note": ""},
-        {"year": 2024, "month": 1, "type": "结余", "owner": "家庭",
+        {"year": 2024, "month": 1, "type": "储蓄", "owner": "家庭",
          "name": "现金结余", "value": 50000.00, "note": "月末"},
         {"year": 2024, "month": 2, "type": "收入", "owner": "家庭",
          "name": "工资", "value": 15000.00, "note": ""},
@@ -648,7 +648,7 @@ def download_history_template_csv():
          "name": "房租房贷", "value": 4500.00, "note": ""},
         {"year": 2024, "month": 2, "type": "支出", "owner": "家庭",
          "name": "餐饮", "value": 2850.00, "note": ""},
-        {"year": 2024, "month": 2, "type": "结余", "owner": "家庭",
+        {"year": 2024, "month": 2, "type": "储蓄", "owner": "家庭",
          "name": "现金结余", "value": 52649.50, "note": ""},
     ]
     buf = _write_csv(rows, ["year", "month", "type", "owner",

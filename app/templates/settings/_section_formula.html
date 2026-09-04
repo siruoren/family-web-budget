@@ -7,7 +7,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="text" name="formula" id="formula-input"
              value="{{ formula }}" size="52" list="formula-type-list"
-             placeholder="如: 上月结余+当月收入-当月结余=支出" autocomplete="off">
+             placeholder="如: 上月资产总和+当月收入-当月资产总和=支出" autocomplete="off">
       <datalist id="formula-type-list">
         {% for t in all_types %}<option value="{{ t }}">{% endfor %}
       </datalist>
@@ -27,6 +27,6 @@
       <button type="button" class="chip chip-formula" data-insert="-">-</button>
       <button type="button" class="chip chip-formula" data-insert="=">=</button>
     </div>
-    <p class="muted">默认: 上月结余+当月收入-当月结余=支出; 若支出条目合计≠公式结果, 差额计入"支出(其他)"</p>
+    <p class="muted">默认: 上月储蓄总和+当月收入-当月储蓄总和=支出; 若支出条目合计≠公式结果, 差额计入"支出(其他)"</p>
   </div>
 </section>

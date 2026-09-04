@@ -39,7 +39,7 @@
     <div class="nav-links">
       <a href="{{ url_for('dashboard.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('dashboard') }}">首页</a>
       <a href="{{ url_for('entries.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('entries') and not request.args.get('type') }}">月度条目</a>
-      <a href="{{ url_for('entries.index', type='结余') }}" class="{{ 'active' if request.endpoint == 'entries.index' and request.args.get('type') == '结余' }}">月末结余</a>
+      <a href="{{ url_for('entries.index', type='资产总和') }}" class="{{ 'active' if request.endpoint == 'entries.index' and request.args.get('type') == '资产总和' }}">月末结余</a>
       <a href="{{ url_for('analysis.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('analysis') }}">智能分析</a>
       <details class="nav-dropdown">
         <summary class="{{ 'active' if request.endpoint and request.endpoint.startswith('reports') }}">报表中心</summary>

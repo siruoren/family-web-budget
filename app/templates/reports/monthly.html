@@ -36,7 +36,7 @@
       {% for t, items in data.summary.groups.items() %}
         {% for it in items %}
         <tr>
-          <td><span class="chip chip-{{ 'income' if t == '收入' else ('expense' if t == '支出' else ('balance' if t == '结余' else 'savings')) }}">{{ t }}</span></td>
+          <td><span class="chip chip-{{ 'income' if t == '收入' else ('expense' if t == '支出' else ('balance' if t == '储蓄' else 'savings')) }}">{{ t }}</span></td>
           <td>{{ it.name }}</td>
           <td>{{ it.owner }}</td>
           <td>{{ it.value|fmt_money }}</td>
@@ -84,7 +84,7 @@
 
 {# ===== 资产报表 (储蓄明细) ===== #}
 <section class="card">
-  <div class="card-hd">资产报表 <span class="muted">储蓄总和 {{ data.calc.savings_total|fmt_money }}</span></div>
+  <div class="card-hd">资产报表 <span class="muted">资产总和 {{ data.calc.savings_total|fmt_money }}</span></div>
   <div class="table-wrap">
     <table class="data-table">
       <thead><tr><th>属主</th><th>金额</th><th>占储蓄比</th></tr></thead>

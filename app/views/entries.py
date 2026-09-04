@@ -65,7 +65,7 @@ def index():
     # 储蓄类条目自动结转: 当月无值时预填上月值 (用于模板 placeholder 提示)
     carry_map: dict[int, float] = {}
     for it in all_items:
-        if it.type != "储蓄":
+        if it.type != "储蓄总和":
             continue
         if it.id in asset_map:
             continue  # 当月已填, 不结转
@@ -186,7 +186,7 @@ def save():
         raw = request.form.get(f"item_{it.id}", "").strip()
         note = request.form.get(f"note_{it.id}", "").strip()
         # 储蓄类自动结转: 空值时用上月值填充 (手动输入优先)
-        if not raw and it.type == "储蓄":
+        if not raw and it.type == "储蓄总和":
             last_val = get_last_month_value(year, month, uid, it.id)
             if last_val:
                 raw = str(last_val)

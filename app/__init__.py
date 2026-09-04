@@ -83,12 +83,13 @@ def create_app(config_name: str = "default") -> Flask:
 def _seed_defaults():
     """首次启动补齐: 默认用户 + 默认账目类型 + 月末结余默认条目
 
-    设计: 默认仅植入"月末结余"一个 AccountItem, 让用户每月都能手动填写
-    月末结余值; 其他收入/支出条目由用户通过
-    系统配置 → 导入导出 → 历史数据导入(可下载模板) 按需建立。
-    菜单结构(_seed_menu)仍保留 收入/支出/结余 三组导航分组。
-    类型管理: ItemType 表空时, 先从旧库 AccountItem.distinct(type) 补入
-    (兼容旧库已有条目类型), 再确保 收入/支出/结余 三个默认存在。
+    类型体系:
+      收入     — 当月各项收入
+      支出     — 当月各项支出
+      储蓄     — 单项储蓄账户 (现金结余 / 银行卡结余 / ...)
+      理财     — 投资理财账户 (股票 / 基金 / 理财产品 / ...)
+      资产总和 — 月末总资产 (月末结余), 可手动输入; 有值时直接取, 无值时自动计算=储蓄+理财
+    "结余" 类型为历史兼容, 新数据不再使用。
     """
     from sqlalchemy import select
     from .models import User, ItemType, AccountItem
@@ -106,9 +107,11 @@ def _seed_defaults():
             db.session.add(user)
     db.session.commit()
 
+    # ---- 迁移: 将旧类型名称迁移到新类型 ----
+    _migrate_old_types()
+
     # 默认账目类型 (ItemType 表空时补齐)
     if not db.session.query(ItemType).first():
-        # 旧库兼容: 先把 AccountItem 中已用但 ItemType 表没有的类型补入
         used = db.session.execute(
             select(AccountItem.type).distinct().order_by(AccountItem.type)
         ).all()
@@ -121,10 +124,10 @@ def _seed_defaults():
                 ))
         db.session.commit()
 
-    # 始终确保四个默认类型存在 (收入/支出/结余/储蓄) - 已存在则跳过
+    # 始终确保六个默认类型存在 (收入/支出/结余/储蓄/理财/资产总和) - 已存在则跳过
     existing = {t.name for t in db.session.query(ItemType).all()}
     order = db.session.query(ItemType).count()
-    for d in ["收入", "支出", "结余", "储蓄"]:
+    for d in ["收入", "支出", "结余", "储蓄", "理财", "资产总和"]:
         if d not in existing:
             order += 1
             db.session.add(ItemType(
@@ -132,51 +135,88 @@ def _seed_defaults():
             ))
     db.session.commit()
 
-    # 月末结余默认条目 (让用户开箱即可在月度条目录入页手动填写月末结余)
-    # 旧库已存在同名同类型同属主条目则跳过 (兼容历史导入的"现金结余"等不重名)
+    # 月末结余默认条目 (type=资产总和, 可手动输入总资产)
     has_balance = db.session.execute(
         select(AccountItem.id).where(
             AccountItem.name == "月末结余",
-            AccountItem.type == "结余",
+            AccountItem.type == "资产总和",
             AccountItem.owner == "家庭",
         ).limit(1)
     ).first()
     if not has_balance:
-        # 取一个较大的 sort_order, 让月末结余排在结余分组末尾
         max_order = db.session.execute(
-            select(AccountItem).where(AccountItem.type == "结余")
+            select(AccountItem).where(AccountItem.type == "资产总和")
             .order_by(AccountItem.sort_order.desc()).limit(1)
         ).scalars().first()
         next_order = (max_order.sort_order + 1) if max_order else 0
         db.session.add(AccountItem(
-            name="月末结余", type="结余", owner="家庭",
-            note="月末手动填写结余", sort_order=next_order, is_active=True,
+            name="月末结余", type="资产总和", owner="家庭",
+            note="月末总资产, 可手动输入; 留空则自动=储蓄+理财",
+            sort_order=next_order, is_active=True,
         ))
         db.session.commit()
 
-    # 月末储蓄默认条目 (储蓄总和的核心来源, 自动从上月结转)
-    has_saving = db.session.execute(
-        select(AccountItem.id).where(
+    # 清理: 删除冗余的"月末储蓄"条目 (已由"月末结余"替代)
+    redundant = db.session.execute(
+        select(AccountItem).where(
             AccountItem.name == "月末储蓄",
-            AccountItem.type == "储蓄",
-            AccountItem.owner == "家庭",
-        ).limit(1)
-    ).first()
-    if not has_saving:
-        max_order_s = db.session.execute(
-            select(AccountItem).where(AccountItem.type == "储蓄")
-            .order_by(AccountItem.sort_order.desc()).limit(1)
+        )
+    ).scalars().all()
+    for mi in redundant:
+        db.session.delete(mi)
+    db.session.commit()
+
+
+def _migrate_old_types():
+    """迁移旧类型名称到新类型
+
+    阶段 1: type=结余 → 储蓄/资产总和
+      - "月末结余" / "军月末结余" / "君月末结余" (name 含"月末结余") → 资产总和
+      - "现金结余" / "银行卡结余" 等 (type=结余 但 name 不含"月末") → 储蓄
+    阶段 2: type=储蓄总和 → 资产总和 (统一重命名)
+    阶段 3: ItemType 表中 "储蓄总和" → "资产总和"
+    """
+    from sqlalchemy import select
+    from .models import AccountItem, ItemType
+
+    # 阶段 1: type=结余 迁移
+    old_jieyu = db.session.execute(
+        select(AccountItem).where(AccountItem.type == "结余")
+    ).scalars().all()
+    for it in old_jieyu:
+        if "月末结余" in it.name or "月末储蓄" in it.name:
+            it.type = "资产总和"
+            it.note = "月末总资产, 可手动输入; 留空则自动=储蓄+理财"
+        else:
+            it.type = "储蓄"
+    db.session.commit()
+
+    # 阶段 2: type=储蓄总和 → 资产总和
+    old_savings_total = db.session.execute(
+        select(AccountItem).where(AccountItem.type == "储蓄总和")
+    ).scalars().all()
+    for it in old_savings_total:
+        it.type = "资产总和"
+    db.session.commit()
+
+    # 阶段 3: ItemType 重命名
+    old_it = db.session.execute(
+        select(ItemType).where(ItemType.name == "储蓄总和")
+    ).scalars().all()
+    for t in old_it:
+        # 检查是否已有"资产总和"
+        existing = db.session.execute(
+            select(ItemType).where(ItemType.name == "资产总和")
         ).scalars().first()
-        next_order_s = (max_order_s.sort_order + 1) if max_order_s else 0
-        db.session.add(AccountItem(
-            name="月末储蓄", type="储蓄", owner="家庭",
-            note="月末总资产(储蓄), 自动从上月结转", sort_order=next_order_s, is_active=True,
-        ))
-        db.session.commit()
+        if existing:
+            db.session.delete(t)
+        else:
+            t.name = "资产总和"
+    db.session.commit()
 
 
 def _seed_menu():
-    """首次启动补齐: 默认左侧菜单结构 (收入/支出/结余 三组)"""
+    """首次启动补齐: 默认左侧菜单结构 (收入/支出/储蓄/理财/资产总和 五组)"""
     from .models import MenuItem
 
     if db.session.query(MenuItem).first():
@@ -187,10 +227,12 @@ def _seed_menu():
         ("家庭收入", "收入", "家庭", 1, True),
         ("支出", "", "", 2, True),
         ("家庭支出", "支出", "家庭", 3, True),
-        ("结余", "", "", 4, True),
-        ("家庭结余", "结余", "家庭", 5, True),
-        ("储蓄", "", "", 6, True),
-        ("家庭储蓄", "储蓄", "家庭", 7, True),
+        ("储蓄", "", "", 4, True),
+        ("家庭储蓄", "储蓄", "家庭", 5, True),
+        ("理财", "", "", 6, True),
+        ("家庭理财", "理财", "家庭", 7, True),
+        ("资产总和", "", "", 8, True),
+        ("家庭资产总和", "资产总和", "家庭", 9, True),
     ]
     parents = {}
     for name, ftype, fowner, order, active in menus:

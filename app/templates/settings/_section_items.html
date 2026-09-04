@@ -23,7 +23,7 @@
       <form method="post" action="{{ url_for('settings.item_batch_add') }}" data-api="1">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <h4>批量新增 <span class="muted">每行一条, 格式: 名称,类型,属主,备注</span></h4>
-        <textarea name="batch_text" rows="6" placeholder="工资,收入,家庭,月度工资&#10;餐饮,支出,家庭,日常饮食&#10;现金结余,结余,家庭,月末现金"></textarea>
+        <textarea name="batch_text" rows="6" placeholder="工资,收入,家庭,月度工资&#10;餐饮,支出,家庭,日常饮食&#10;现金结余,储蓄,家庭,月末现金"></textarea>
         <button class="btn btn-sm btn-primary">批量导入</button>
       </form>
     </div>

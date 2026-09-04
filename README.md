@@ -1,6 +1,6 @@
 # 家庭记账单 Web 应用 (family-budget-app)
 
-Flask + SQLAlchemy + SQLite 的家庭记账 Web 应用，支持月度收支记录、月末结余快照、Excel 导入导出、智能分析趋势预测、多用户并发编辑锁。
+Flask + SQLAlchemy + SQLite 的家庭记账 Web 应用，支持月度收支记录、月末储蓄总和快照、Excel 导入导出、智能分析趋势预测、多用户并发编辑锁。
 
 ## 快速开始
 

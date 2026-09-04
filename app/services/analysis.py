@@ -97,8 +97,9 @@ def monthly_summary(year: int, month: int, user_id: int) -> dict:
         "totals": dict(totals),
         "income_total": round(totals.get("收入", 0), 2),
         "expense_total": round(totals.get("支出", 0), 2),
-        "balance_total": round(totals.get("结余", 0), 2),
-        "savings_total": round(totals.get("储蓄", 0), 2),
+        "balance_total": round(totals.get("储蓄", 0), 2),
+        "investment_total": round(totals.get("理财", 0), 2),
+        "savings_total": round(totals.get("资产总和", 0), 2),
     }
 
 
@@ -150,12 +151,18 @@ def period_series(yf: int, mf: int, yt: int, mt: int, user_id: int) -> list[dict
     for y, m in periods:
         inc = by_pcat.get((y, m, "收入"), 0)
         exp = by_pcat.get((y, m, "支出"), 0)
-        bal = by_pcat.get((y, m, "结余"), 0)
-        sav = by_pcat.get((y, m, "储蓄"), 0)
+        bal = by_pcat.get((y, m, "储蓄"), 0)
+        inv = by_pcat.get((y, m, "理财"), 0)
+        # 资产总和: 有手动值(资产总和类型有条目)则取手动值, 否则=储蓄+理财
+        if (y, m, "资产总和") in by_pcat:
+            sav = by_pcat[(y, m, "资产总和")]
+        else:
+            sav = bal + inv
         out.append({
             "year": y, "month": m, "label": f"{y}-{m:02d}",
             "income": round(inc, 2), "expense": round(exp, 2),
             "balance": round(bal, 2), "savings": round(sav, 2),
+            "investment": round(inv, 2),
             "net": round(inc - exp, 2),
         })
     return out
@@ -298,7 +305,7 @@ def monthly_report(year: int, month: int, user_id: int) -> dict:
         val = decrypt_float(enc, key)
         by_owner[owner] += val
         by_type[itype] += val
-        if itype == "储蓄":
+        if itype == "资产总和":
             savings_items.append((owner, val))
 
     return {

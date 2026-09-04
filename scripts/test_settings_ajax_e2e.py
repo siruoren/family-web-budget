@@ -133,30 +133,30 @@ r = c.get("/settings/")
 html = r.data.decode("utf-8")
 check("设置页含账户类型分片", 'data-section="types"' in html)
 check("设置页左侧含账户类型导航", "账户类型" in html)
-check("默认类型含收入/支出/结余", "收入" in html and "支出" in html and "结余" in html)
+check("默认类型含收入/支出/储蓄", "收入" in html and "支出" in html and "储蓄" in html)
 check("条目表单类型为select", '<select name="type"' in html)
 
-# 9.55 月末结余默认条目植入 (create_app._seed_defaults 应植入)
+# 9.55 月末结余默认条目植入 (create_app._seed_defaults 应植入, type=储蓄总和)
 with app.app_context():
     bal = db.session.execute(db.select(AccountItem).where(
         AccountItem.name == "月末结余",
-        AccountItem.type == "结余",
+        AccountItem.type == "储蓄总和",
         AccountItem.owner == "家庭",
     )).scalars().first()
-    check("默认植入月末结余条目", bal is not None,
+    check("默认植入月末结余条目(type=储蓄总和)", bal is not None,
           f"id={bal.id if bal else None}")
     check("月末结余 is_active=True", bal is not None and bal.is_active)
     # 重复植入不应产生第二条 (幂等性)
     cnt = db.session.execute(db.select(db.func.count(AccountItem.id)).where(
         AccountItem.name == "月末结余",
-        AccountItem.type == "结余",
+        AccountItem.type == "储蓄总和",
     )).scalar()
     check("月末结余唯一不重复", cnt == 1, f"count={cnt}")
 
-# entries 页 GET 验证渲染: 行 data-type=结余 + 分组合计 4 个 span
+# entries 页 GET 验证渲染: 行 data-type=储蓄总和 + 分组合计 4 个 span
 r = c.get(f"/entries?uid={uid}")
 ehtml = r.data.decode("utf-8")
-check("entries 页含月末结余行", "月末结余" in ehtml and 'data-type="结余"' in ehtml)
+check("entries 页含月末结余行", "月末结余" in ehtml and 'data-type="储蓄总和"' in ehtml)
 check("entries 页含分组合计 span",
       'id="sumIncome"' in ehtml and 'id="sumExpense"' in ehtml
       and 'id="sumBalance"' in ehtml and 'id="sumNet"' in ehtml)

@@ -31,7 +31,7 @@
 <section class="stats-grid">
   <div class="stat-card stat-income"><div class="stat-label">当月收入</div><div class="stat-value">{{ overview.summary.income_total|fmt_money }}</div></div>
   <div class="stat-card stat-expense"><div class="stat-label">当月支出</div><div class="stat-value">{{ overview.summary.expense_total|fmt_money }}</div></div>
-  <div class="stat-card stat-balance"><div class="stat-label">当月结余</div><div class="stat-value">{{ overview.summary.balance_total|fmt_money }}</div></div>
+  <div class="stat-card stat-balance"><div class="stat-label">当月资产总和{% if calc.is_manual %} <small>手动</small>{% endif %}</div><div class="stat-value">{{ calc.savings_total|fmt_money }}</div></div>
   <div class="stat-card"><div class="stat-label">净额(收-支)</div><div class="stat-value">{{ (overview.summary.income_total - overview.summary.expense_total)|fmt_money }}</div></div>
 </section>
 
@@ -88,12 +88,12 @@
 <section class="card formula-card">
   <div class="card-hd">资产公式 · {{ calc.formula }}</div>
   <div class="formula-grid">
-    <div><span class="muted">上月结余</span><b>{{ calc.last_balance|fmt_money }}</b></div>
+    <div><span class="muted">上月资产总和</span><b>{{ calc.last_savings|fmt_money }}</b></div>
     <div><span class="muted">当月收入</span><b>{{ calc.income|fmt_money }}</b></div>
-    <div><span class="muted">当月结余</span><b>{{ calc.balance|fmt_money }}</b></div>
-    <div><span class="muted">公式支出</span><b>{{ calc.calculated_expense|fmt_money }}</b></div>
-    <div><span class="muted">支出条目合计</span><b>{{ calc.expense_items|fmt_money }}</b></div>
-    <div><span class="muted">差额(支出其他)</span><b>{{ calc.other_expense|fmt_money }}</b></div>
+    <div><span class="muted">当月资产总和</span><b>{{ calc.savings_total|fmt_money }}{% if calc.is_manual %} <small>(手动)</small>{% endif %}</b></div>
+    <div><span class="muted">储蓄视角结余</span><b>{{ calc.savings_balance|fmt_money }}</b></div>
+    <div><span class="muted">收支视角结余</span><b>{{ calc.flow_balance|fmt_money }}</b></div>
+    <div><span class="muted">其他支出(差额)</span><b>{{ calc.other_expense|fmt_money }}</b></div>
   </div>
 </section>
 {% endblock %}
@@ -112,7 +112,9 @@
           datasets: [
             { label: "收入", data: SERIES.map(function(s){return s.income;}), borderColor: "#16a34a", backgroundColor: "rgba(22,163,74,.1)", tension: .3 },
             { label: "支出", data: SERIES.map(function(s){return s.expense;}), borderColor: "#dc2626", backgroundColor: "rgba(220,38,38,.1)", tension: .3 },
-            { label: "结余", data: SERIES.map(function(s){return s.balance;}), borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.1)", tension: .3 }
+            { label: "储蓄", data: SERIES.map(function(s){return s.balance;}), borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.1)", tension: .3 },
+            { label: "理财", data: SERIES.map(function(s){return s.investment || 0;}), borderColor: "#d97706", backgroundColor: "rgba(217,119,6,.1)", tension: .3 },
+            { label: "资产总和", data: SERIES.map(function(s){return s.savings || 0;}), borderColor: "#7c3aed", backgroundColor: "rgba(124,58,237,.1)", tension: .3 }
           ]
         },
         options: { responsive: true, plugins: { legend: { position: "bottom" } }, scales: { y: { beginAtZero: true } } }
