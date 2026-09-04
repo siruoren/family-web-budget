@@ -2,7 +2,7 @@
 {% block title %}首页 · {{ overview.year }}年{{ overview.month }}月{% endblock %}
 
 {% block content %}
-<section class="page-head">
+<div class="page-head">
   <h2>本月概览 <small>{{ overview.year }}年{{ overview.month }}月 · {{ current_user_name }}</small></h2>
   <div class="page-actions">
     <form class="period-form auto-submit" method="get" action="{{ url_for('dashboard.index') }}">
@@ -20,7 +20,7 @@
     <a class="btn btn-sm btn-primary"
        href="{{ url_for('entries.index', uid=current_user_id, year=overview.year, month=overview.month) }}">去编辑本月</a>
   </div>
-</section>
+</div>
 
 {% if calc.anomaly %}
 <section class="alert alert-danger">
@@ -28,13 +28,40 @@
 </section>
 {% endif %}
 
-<section class="stats-grid">
-  <div class="stat-card stat-income"><div class="stat-label">当月收入</div><div class="stat-value">{{ overview.summary.income_total|fmt_money }}</div></div>
-  <div class="stat-card stat-expense"><div class="stat-label">当月支出</div><div class="stat-value">{{ overview.summary.expense_total|fmt_money }}</div></div>
-  <div class="stat-card stat-balance"><div class="stat-label">当月资产总和{% if calc.is_manual %} <small>手动</small>{% endif %}</div><div class="stat-value">{{ calc.savings_total|fmt_money }}</div></div>
-  <div class="stat-card"><div class="stat-label">净额(收-支)</div><div class="stat-value">{{ (overview.summary.income_total - overview.summary.expense_total)|fmt_money }}</div></div>
+{# ===== Hero卡片: 资产总览 (暗色渐变) ===== #}
+<section class="card hero-card">
+  <div class="card-body" style="position: relative; z-index: 1;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem;">
+      <div>
+        <div class="hero-label">当月资产总和{% if calc.is_manual %} <small>手动</small>{% endif %}</div>
+        <div class="hero-value font-nums">{{ calc.savings_total|fmt_money }}</div>
+      </div>
+      <div style="background: rgba(255,255,255,0.1); padding: .6rem; border-radius: 12px; border: 0.5px solid rgba(255,255,255,0.1);">
+        <span style="font-size: 1.5rem;">🏠</span>
+      </div>
+    </div>
+    <div class="hero-sub">
+      <div>
+        <div class="muted">当月收入</div>
+        <b class="font-nums" style="color: #FF6B6B;">{{ overview.summary.income_total|fmt_money }}</b>
+      </div>
+      <div>
+        <div class="muted">当月支出</div>
+        <b class="font-nums" style="color: #4ADE80;">{{ overview.summary.expense_total|fmt_money }}</b>
+      </div>
+    </div>
+  </div>
 </section>
 
+{# ===== 统计卡片 ===== #}
+<section class="stats-grid">
+  <div class="stat-card stat-income"><div class="stat-label">当月收入</div><div class="stat-value font-nums">{{ overview.summary.income_total|fmt_money }}</div></div>
+  <div class="stat-card stat-expense"><div class="stat-label">当月支出</div><div class="stat-value font-nums">{{ overview.summary.expense_total|fmt_money }}</div></div>
+  <div class="stat-card stat-balance"><div class="stat-label">当月资产总和{% if calc.is_manual %} <small>手动</small>{% endif %}</div><div class="stat-value font-nums">{{ calc.savings_total|fmt_money }}</div></div>
+  <div class="stat-card"><div class="stat-label">净额(收-支)</div><div class="stat-value font-nums">{{ (overview.summary.income_total - overview.summary.expense_total)|fmt_money }}</div></div>
+</section>
+
+{# ===== 图表 ===== #}
 <section class="charts-row">
   <div class="card chart-card">
     <div class="card-hd">近 12 月趋势</div>
@@ -54,6 +81,7 @@
   </div>
 </section>
 
+{# ===== 年度Top + 未填写 ===== #}
 <section class="grid-2col">
   <div class="card">
     <div class="card-hd">年度 Top 条目</div>
@@ -62,7 +90,7 @@
         <thead><tr><th>#</th><th>条目</th><th>类型</th><th>属主</th><th>金额</th></tr></thead>
         <tbody>
         {% for it in overview.top_items %}
-        <tr><td>{{ loop.index }}</td><td>{{ it.name }}</td><td><span class="chip">{{ it.type }}</span></td><td>{{ it.owner }}</td><td>{{ it.value|fmt_money }}</td></tr>
+        <tr><td>{{ loop.index }}</td><td>{{ it.name }}</td><td><span class="chip">{{ it.type }}</span></td><td>{{ it.owner }}</td><td class="font-nums">{{ it.value|fmt_money }}</td></tr>
         {% else %}
         <tr><td colspan="5" class="empty-row">暂无数据</td></tr>
         {% endfor %}
@@ -79,21 +107,24 @@
         {% for m in overview.missing %}<span class="chip chip-warn">{{ m.type }}/{{ m.name }}</span>{% endfor %}
       </div>
       {% else %}
-      <p class="muted">本月所有条目已填写完整</p>
+      <p class="muted">本月所有条目已填写完整 ✅</p>
       {% endif %}
     </div>
   </div>
 </section>
 
+{# ===== 公式卡片 ===== #}
 <section class="card formula-card">
   <div class="card-hd">资产公式 · {{ calc.formula }}</div>
-  <div class="formula-grid">
-    <div><span class="muted">上月资产总和</span><b>{{ calc.last_savings|fmt_money }}</b></div>
-    <div><span class="muted">当月收入</span><b>{{ calc.income|fmt_money }}</b></div>
-    <div><span class="muted">当月资产总和</span><b>{{ calc.savings_total|fmt_money }}{% if calc.is_manual %} <small>(手动)</small>{% endif %}</b></div>
-    <div><span class="muted">储蓄视角结余</span><b>{{ calc.savings_balance|fmt_money }}</b></div>
-    <div><span class="muted">收支视角结余</span><b>{{ calc.flow_balance|fmt_money }}</b></div>
-    <div><span class="muted">其他支出(差额)</span><b>{{ calc.other_expense|fmt_money }}</b></div>
+  <div class="card-body">
+    <div class="formula-grid">
+      <div><span class="muted">上月资产总和</span><b class="font-nums">{{ calc.last_savings|fmt_money }}</b></div>
+      <div><span class="muted">当月收入</span><b class="font-nums">{{ calc.income|fmt_money }}</b></div>
+      <div><span class="muted">当月资产总和</span><b class="font-nums">{{ calc.savings_total|fmt_money }}{% if calc.is_manual %} <small>(手动)</small>{% endif %}</b></div>
+      <div><span class="muted">储蓄视角结余</span><b class="font-nums">{{ calc.savings_balance|fmt_money }}</b></div>
+      <div><span class="muted">收支视角结余</span><b class="font-nums">{{ calc.flow_balance|fmt_money }}</b></div>
+      <div><span class="muted">其他支出(差额)</span><b class="font-nums">{{ calc.other_expense|fmt_money }}</b></div>
+    </div>
   </div>
 </section>
 {% endblock %}
@@ -110,11 +141,11 @@
         data: {
           labels: SERIES.map(function (s) { return s.label; }),
           datasets: [
-            { label: "收入", data: SERIES.map(function(s){return s.income;}), borderColor: "#16a34a", backgroundColor: "rgba(22,163,74,.1)", tension: .3 },
-            { label: "支出", data: SERIES.map(function(s){return s.expense;}), borderColor: "#dc2626", backgroundColor: "rgba(220,38,38,.1)", tension: .3 },
-            { label: "储蓄", data: SERIES.map(function(s){return s.balance;}), borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.1)", tension: .3 },
-            { label: "理财", data: SERIES.map(function(s){return s.investment || 0;}), borderColor: "#d97706", backgroundColor: "rgba(217,119,6,.1)", tension: .3 },
-            { label: "资产总和", data: SERIES.map(function(s){return s.savings || 0;}), borderColor: "#7c3aed", backgroundColor: "rgba(124,58,237,.1)", tension: .3 }
+            { label: "收入", data: SERIES.map(function(s){return s.income;}), borderColor: "#FF3B30", backgroundColor: "rgba(255,59,48,.1)", tension: .3 },
+            { label: "支出", data: SERIES.map(function(s){return s.expense;}), borderColor: "#34C759", backgroundColor: "rgba(52,199,89,.1)", tension: .3 },
+            { label: "储蓄", data: SERIES.map(function(s){return s.balance;}), borderColor: "#007AFF", backgroundColor: "rgba(0,122,255,.1)", tension: .3 },
+            { label: "理财", data: SERIES.map(function(s){return s.investment || 0;}), borderColor: "#FF9500", backgroundColor: "rgba(255,149,0,.1)", tension: .3 },
+            { label: "资产总和", data: SERIES.map(function(s){return s.savings || 0;}), borderColor: "#AF52DE", backgroundColor: "rgba(175,82,222,.1)", tension: .3 }
           ]
         },
         options: { responsive: true, plugins: { legend: { position: "bottom" } }, scales: { y: { beginAtZero: true } } }
@@ -141,7 +172,7 @@
     }
     if (pieChart) { pieChart.destroy(); pieChart = null; }
     if (!items.length) return;
-    var colors = ["#16a34a","#dc2626","#2563eb","#d97706","#7c3aed","#0891b2","#db2777","#65a30d","#ea580c","#0284c7","#9333ea","#ca8a04"];
+    var colors = ["#FF3B30","#34C759","#007AFF","#FF9500","#AF52DE","#5856D6","#FF2D55","#30B0C7","#FFCC00","#5AC8FA","#64D2FF","#FF6482"];
     pieChart = new Chart(canvas, {
       type: "doughnut",
       data: { labels: items.map(function(i){return i.label;}),

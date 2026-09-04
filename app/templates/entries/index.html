@@ -25,7 +25,7 @@
   </div>
 </div>
 
-{# ===== 未填写条目智能提醒 ===== #}
+{# ===== 未填写条目提醒 ===== #}
 {% if missing %}
 <section class="alert alert-warning">
   <strong>还有 {{ missing|length }} 项未填写:</strong>
@@ -42,13 +42,37 @@
 </section>
 {% endif %}
 
-{# ===== 顶部量化卡片 (均值/总和) ===== #}
-<section class="stats-grid">
-  <div class="stat-card stat-income"><div class="stat-label">当月收入</div><div class="stat-value">{{ summary.income_total|fmt_money }}</div></div>
-  <div class="stat-card stat-expense"><div class="stat-label">当月支出</div><div class="stat-value">{{ summary.expense_total|fmt_money }}</div></div>
-  <div class="stat-card stat-balance"><div class="stat-label">当月资产总和{% if calc.is_manual %} <small>手动</small>{% endif %}</div><div class="stat-value">{{ calc.savings_total|fmt_money }}</div></div>
-  <div class="stat-card"><div class="stat-label">当月储蓄</div><div class="stat-value">{{ summary.balance_total|fmt_money }}</div></div>
-  <div class="stat-card"><div class="stat-label">净额(收-支)</div><div class="stat-value">{{ (summary.income_total - summary.expense_total)|fmt_money }}</div></div>
+{# ===== Hero卡片: 资产总览 (暗色渐变) ===== #}
+<section class="card hero-card">
+  <div class="card-body" style="position: relative; z-index: 1;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem;">
+      <div>
+        <div class="hero-label">当月资产总和{% if calc.is_manual %} <small>手动</small>{% endif %}</div>
+        <div class="hero-value font-nums">{{ calc.savings_total|fmt_money }}</div>
+      </div>
+      <div style="background: rgba(255,255,255,0.1); padding: .6rem; border-radius: 12px; border: 0.5px solid rgba(255,255,255,0.1);">
+        <span style="font-size: 1.5rem;">💎</span>
+      </div>
+    </div>
+    <div class="hero-sub">
+      <div>
+        <div class="muted">当月收入</div>
+        <b class="font-nums" style="color: #FF6B6B;">{{ summary.income_total|fmt_money }}</b>
+      </div>
+      <div>
+        <div class="muted">当月支出</div>
+        <b class="font-nums" style="color: #4ADE80;">{{ summary.expense_total|fmt_money }}</b>
+      </div>
+      <div>
+        <div class="muted">当月储蓄</div>
+        <b class="font-nums" style="color: #60A5FA;">{{ summary.balance_total|fmt_money }}</b>
+      </div>
+      <div>
+        <div class="muted">净额(收-支)</div>
+        <b class="font-nums" style="color: #FBBF24;">{{ (summary.income_total - summary.expense_total)|fmt_money }}</b>
+      </div>
+    </div>
+  </div>
 </section>
 
 {# ===== 公式计算卡片 (双视角) ===== #}
@@ -57,16 +81,18 @@
     资产公式 · 双视角核算
     {% if calc.anomaly %}<span class="badge badge-danger">数据异常</span>{% endif %}
   </div>
-  <div class="formula-grid">
-    <div><span class="muted">上月资产总和</span><b>{{ calc.last_savings|fmt_money }}</b></div>
-    <div><span class="muted">当月资产总和</span><b>{{ calc.savings_total|fmt_money }}{% if calc.is_manual %} <small>(手动)</small>{% endif %}</b></div>
-    <div><span class="muted">储蓄视角结余</span><b>{{ calc.savings_balance|fmt_money }}</b></div>
-    <div><span class="muted">当月收入</span><b>{{ calc.income|fmt_money }}</b></div>
-    <div><span class="muted">当月支出</span><b>{{ calc.expense|fmt_money }}</b></div>
-    <div><span class="muted">收支视角结余</span><b>{{ calc.flow_balance|fmt_money }}</b></div>
-    <div><span class="muted">其他支出(差额)</span><b>{{ calc.other_expense|fmt_money }}</b></div>
+  <div class="card-body">
+    <div class="formula-grid">
+      <div><span class="muted">上月资产总和</span><b class="font-nums">{{ calc.last_savings|fmt_money }}</b></div>
+      <div><span class="muted">当月资产总和</span><b class="font-nums">{{ calc.savings_total|fmt_money }}{% if calc.is_manual %} <small>(手动)</small>{% endif %}</b></div>
+      <div><span class="muted">储蓄视角结余</span><b class="font-nums">{{ calc.savings_balance|fmt_money }}</b></div>
+      <div><span class="muted">当月收入</span><b class="font-nums">{{ calc.income|fmt_money }}</b></div>
+      <div><span class="muted">当月支出</span><b class="font-nums">{{ calc.expense|fmt_money }}</b></div>
+      <div><span class="muted">收支视角结余</span><b class="font-nums">{{ calc.flow_balance|fmt_money }}</b></div>
+      <div><span class="muted">其他支出(差额)</span><b class="font-nums">{{ calc.other_expense|fmt_money }}</b></div>
+    </div>
+    <p class="muted" style="font-size:.78rem;margin:.4rem 0 0">储蓄视角: 当月资产总和-上月资产总和=本月结余; 收支视角: 当月收入-当月支出=本月结余; 差额=其他支出; 资产总和=有手动值取手动值,否则=储蓄+理财</p>
   </div>
-  <p class="muted" style="font-size:.8rem;margin:.4rem 0 0">储蓄视角: 当月资产总和-上月资产总和=本月结余; 收支视角: 当月收入-当月支出=本月结余; 差额=其他支出; 资产总和=有手动值取手动值,否则=储蓄+理财</p>
 </section>
 
 {# ===== Excel 表单式条目填写 ===== #}
@@ -122,8 +148,8 @@
                      value="{{ a.note if a else '' }}" maxlength="120"
                      class="table-input">
             </td>
-            <td class="c-stat c-stat-avg muted" data-label="均值">{{ st.avg|fmt_money if st else '-' }}</td>
-            <td class="c-stat c-stat-sum muted" data-label="合计">{{ st.sum|fmt_money if st else '-' }}</td>
+            <td class="c-stat c-stat-avg muted font-nums" data-label="均值">{{ st.avg|fmt_money if st else '-' }}</td>
+            <td class="c-stat c-stat-sum muted font-nums" data-label="合计">{{ st.sum|fmt_money if st else '-' }}</td>
             <td class="c-lock" data-label="状态" id="lock-{{ it.id }}">
               {% if locked_by_other %}
                 <span class="locked" title="被 {{ lk.user_label }} 锁定">🔒 {{ lk.user_label }}</span>
@@ -142,12 +168,12 @@
             <td colspan="4" class="ta-right"><b>分组合计</b></td>
             <td class="c-val" colspan="5">
               <div class="sum-chips-wrap">
-                <span class="sum-chip sum-income">收入 <b id="sumIncome">0.00</b></span>
-                <span class="sum-chip sum-expense">支出 <b id="sumExpense">0.00</b></span>
-                <span class="sum-chip sum-balance">储蓄 <b id="sumBalance">0.00</b></span>
-                <span class="sum-chip sum-savings">资产 <b id="sumSavings">0.00</b></span>
-                <span class="sum-chip sum-investment">理财 <b id="sumInvestment">0.00</b></span>
-                <span class="sum-chip sum-net">净额(收-支) <b id="sumNet">0.00</b></span>
+                <span class="sum-chip sum-income">收入 <b id="sumIncome" class="font-nums">0.00</b></span>
+                <span class="sum-chip sum-expense">支出 <b id="sumExpense" class="font-nums">0.00</b></span>
+                <span class="sum-chip sum-balance">储蓄 <b id="sumBalance" class="font-nums">0.00</b></span>
+                <span class="sum-chip sum-savings">资产 <b id="sumSavings" class="font-nums">0.00</b></span>
+                <span class="sum-chip sum-investment">理财 <b id="sumInvestment" class="font-nums">0.00</b></span>
+                <span class="sum-chip sum-net">净额(收-支) <b id="sumNet" class="font-nums">0.00</b></span>
               </div>
             </td>
           </tr>
@@ -172,7 +198,7 @@
 <script>
   window.EDIT_LOCK = { year: {{ year }}, month: {{ month }}, userId: "{{ my_user_id }}" };
 
-// 实时合计 (按类型分组: 收入 / 支出 / 储蓄 / 理财 / 资产总和 / 净额)
+// 实时合计
 (function () {
   var inputs = document.querySelectorAll('input[name^="item_"]');
   if (!inputs.length) return;

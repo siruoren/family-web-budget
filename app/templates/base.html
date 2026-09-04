@@ -25,17 +25,23 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="csrf-token" content="{{ csrf_token() }}">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#F2F2F7">
   <title>{% block title %}家庭记账单{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   {% block head %}{% endblock %}
 </head>
 <body>
 
-  {# ===== 顶部菜单栏 ===== #}
+  {# ===== 顶部导航栏 (毛玻璃) ===== #}
   <nav class="topbar">
-    <a class="brand" href="{{ url_for('dashboard.index') }}">君军之家 · 记账单</a>
+    <a class="brand" href="{{ url_for('dashboard.index') }}">
+      <span class="brand-logo">💰</span>
+      君军之家
+    </a>
     <div class="nav-links">
       <a href="{{ url_for('dashboard.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('dashboard') }}">首页</a>
       <a href="{{ url_for('entries.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('entries') and not request.args.get('type') }}">月度条目</a>
@@ -93,6 +99,25 @@
       {% block content %}{% endblock %}
     </main>
   </div>
+
+  {# ===== 移动端底部Tab栏 (iOS风格) ===== #}
+  <nav class="mobile-tabbar" aria-label="主导航">
+    <div class="mobile-tabbar-inner">
+      <a href="{{ url_for('dashboard.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('dashboard') }}">
+        <span class="tab-icon">🏠</span>首页
+      </a>
+      <a href="{{ url_for('entries.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('entries') }}">
+        <span class="tab-icon">📝</span>条目
+      </a>
+      <a href="{{ url_for('entries.index', type='资产总和') }}" class="tab-add" title="月末结余">💰</a>
+      <a href="{{ url_for('analysis.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('analysis') }}">
+        <span class="tab-icon">📊</span>统计
+      </a>
+      <a href="{{ url_for('settings.index') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('settings') }}">
+        <span class="tab-icon">⚙️</span>我的
+      </a>
+    </div>
+  </nav>
 
   <footer class="footer">
     <span>家庭记账单 · {{ current_user_name }} · {{ current_year }}</span>
