@@ -103,12 +103,17 @@
   <input type="hidden" name="filter_type" value="{{ current_type }}">
   <input type="hidden" name="filter_owner" value="{{ current_owner }}">
 
-  <div class="card">
-    <div class="card-hd">
-      条目编辑表 <span class="muted">{{ all_items|length }} 项</span>
+  <div class="card entry-card" id="entryCard">
+    <div class="card-hd entry-card-hd">
+      <span>条目编辑表 <span class="muted">{{ all_items|length }} 项</span></span>
+      <div class="entry-card-actions">
+        <a class="btn btn-sm btn-secondary" href="{{ url_for('entries.index', type=current_type, owner=current_owner, year=year, month=month) }}" title="刷新数据">🔄 刷新</a>
+        <button type="button" class="btn btn-sm btn-primary" id="btnBatchEdit" title="进入批量编辑模式">✏️ 批量编辑</button>
+        <button type="submit" class="btn btn-sm btn-primary" id="btnSave" disabled style="opacity:.4;pointer-events:none">💾 保存</button>
+      </div>
     </div>
     <div class="table-wrap entry-table-wrap">
-      <table class="data-table entry-table">
+      <table class="data-table entry-table" id="entryTable">
         <thead>
           <tr>
             <th class="c-idx">#</th>
@@ -139,14 +144,14 @@
               <input type="number" step="0.01" inputmode="decimal" name="item_{{ it.id }}"
                      value="{{ a.value if a and a.value is not none else '' }}"
                      data-rt="asset" data-rid="{{ it.id }}"
-                     {{ 'disabled' if locked_by_other }}
+                     {{ 'disabled' if locked_by_other else 'readonly' }}
                      {% if carry %}placeholder="结转 {{ carry|fmt_money }}" data-carry="{{ carry }}"{% else %}placeholder="0.00"{% endif %}
                      class="table-input{{ ' input-carry' if carry }}">
             </td>
             <td class="c-note" data-label="备注">
               <input type="text" name="note_{{ it.id }}"
                      value="{{ a.note if a else '' }}" maxlength="120"
-                     class="table-input">
+                     class="table-input" {{ 'disabled' if locked_by_other else 'readonly' }}>
             </td>
             <td class="c-stat c-stat-avg muted font-nums" data-label="均值">{{ st.avg|fmt_money if st else '-' }}</td>
             <td class="c-stat c-stat-sum muted font-nums" data-label="合计">{{ st.sum|fmt_money if st else '-' }}</td>
@@ -181,15 +186,6 @@
         {% endif %}
       </table>
     </div>
-  </div>
-
-  {# 固定保存按钮 - 左下角跟随滑动 #}
-  <div class="fixed-save-bar" id="fixedSaveBar">
-    <button type="submit" class="btn btn-primary btn-save-fixed" id="btnSave">
-      <span class="btn-save-icon">💾</span>
-      <span class="btn-save-text">保存数据</span>
-    </button>
-    <a class="btn btn-secondary btn-refresh-fixed" href="{{ url_for('entries.index', type=current_type, owner=current_owner, year=year, month=month) }}">刷新</a>
   </div>
 </form>
 {% endblock %}
@@ -241,15 +237,54 @@
   calcTotal();
 })();
 
-// 保存按钮加载状态
+// 批量编辑模式切换
 (function () {
+  var btnEdit = document.getElementById('btnBatchEdit');
+  var btnSave = document.getElementById('btnSave');
   var form = document.getElementById('entryForm');
-  var btn = document.getElementById('btnSave');
-  if (!form || !btn) return;
-  form.addEventListener('submit', function () {
-    btn.classList.add('btn-loading');
-    btn.querySelector('.btn-save-text').textContent = '保存中…';
+  var table = document.getElementById('entryTable');
+  if (!btnEdit || !form || !table) return;
+  var editMode = false;
+  btnEdit.addEventListener('click', function () {
+    editMode = !editMode;
+    var inputs = table.querySelectorAll('input.table-input');
+    inputs.forEach(function (el) {
+      if (el.disabled) return; // locked by other, skip
+      if (editMode) {
+        el.removeAttribute('readonly');
+        el.classList.add('editable');
+      } else {
+        el.setAttribute('readonly', '');
+        el.classList.remove('editable');
+      }
+    });
+    if (editMode) {
+      table.classList.add('edit-mode');
+      btnEdit.innerHTML = '✅ 退出编辑';
+      btnEdit.classList.remove('btn-primary');
+      btnEdit.classList.add('btn-secondary');
+      btnSave.disabled = false;
+      btnSave.style.opacity = '';
+      btnSave.style.pointerEvents = '';
+      // focus first editable input
+      var first = table.querySelector('input.table-input.editable');
+      if (first) first.focus();
+    } else {
+      table.classList.remove('edit-mode');
+      btnEdit.innerHTML = '✏️ 批量编辑';
+      btnEdit.classList.remove('btn-secondary');
+      btnEdit.classList.add('btn-primary');
+      btnSave.disabled = true;
+      btnSave.style.opacity = '.4';
+      btnSave.style.pointerEvents = 'none';
+    }
   });
+  // save button loading state
+  if (btnSave) {
+    form.addEventListener('submit', function () {
+      btnSave.classList.add('btn-loading');
+    });
+  }
 })();
 </script>
 <script src="{{ url_for('static', filename='js/edit_lock.js') }}"></script>

@@ -318,6 +318,51 @@ details.tree-det[open] > .tree-summary::before { transform: rotate(90deg); }
   padding-left: .5rem; border-left: 3px solid var(--primary);
 }
 
+/* ---------- Entry card header with actions ---------- */
+.entry-card-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+.entry-card-actions {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  flex-wrap: nowrap;
+}
+/* Edit mode visual feedback */
+.entry-table.edit-mode {
+  border: 2px solid var(--primary);
+  border-radius: var(--radius);
+}
+.entry-table.edit-mode th {
+  background: var(--primary-soft);
+}
+.table-input.editable {
+  background: #fff;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-soft);
+}
+.table-input[readonly] {
+  background: transparent;
+  border-color: transparent;
+  cursor: default;
+  color: var(--text);
+  font-weight: 500;
+}
+.table-input[readonly]:focus {
+  outline: none;
+  box-shadow: none;
+  border-color: transparent;
+}
+.table-input[disabled] {
+  background: var(--bg-secondary);
+  cursor: not-allowed;
+  opacity: .6;
+}
+
 /* ---------- Tables ---------- */
 .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 table.data-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
@@ -691,6 +736,16 @@ input:disabled.table-input { background: var(--bg-secondary); cursor: not-allowe
   .entry-table tbody td.c-note input {
     width: 100%; min-height: 44px; font-size: 1rem; text-align: left;
   }
+  /* Mobile: readonly inputs look like text */
+  .entry-table tbody td.c-val input[readonly],
+  .entry-table tbody td.c-note input[readonly] {
+    min-height: 0; padding: .1rem 0; border: none; background: transparent;
+    font-size: 1rem; font-weight: 600; color: var(--text);
+  }
+  .entry-table tbody td.c-val input[readonly].editable {
+    min-height: 44px; padding: .45rem .6rem; border: 0.5px solid var(--primary);
+    background: #fff; border-radius: 8px; font-weight: 400;
+  }
   .entry-table tbody td.c-idx,
   .entry-table tbody td.c-stat-avg,
   .entry-table tbody td.c-stat-sum { display: none; }
@@ -752,6 +807,10 @@ input:disabled.table-input { background: var(--bg-secondary); cursor: not-allowe
   }
   .btn { min-height: 40px; font-size: .85rem; }
   .btn-sm { min-height: 34px; }
+  /* Entry card header actions on mobile */
+  .entry-card-hd { flex-direction: column; align-items: stretch; gap: .4rem; }
+  .entry-card-actions { justify-content: space-between; }
+  .entry-card-actions .btn-sm { padding: .3rem .5rem; font-size: .78rem; flex: 1; }
 }
 
 /* 超小屏幕 */
