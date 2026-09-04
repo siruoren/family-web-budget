@@ -6,7 +6,7 @@
   3. 表单中: <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   4. AJAX 中: fetch(url, { headers: {"X-CSRFToken": getCSRFToken()} })
 
-  豁免: GET / HEAD / OPTIONS 请求, 以及 /locks/ 前缀的心跳/释放 (AJAX 操作)
+  豁免: GET / HEAD / OPTIONS 请求
 """
 import secrets
 from flask import session, request, g, abort
@@ -14,10 +14,8 @@ from flask import session, request, g, abort
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 
-# 这些路径前缀豁免 CSRF (AJAX 内部调用, 已有锁机制保护)
-CSRF_EXEMPT_PREFIXES = (
-    "/locks/",  # 并发锁操作 (acquire/release/heartbeat/sync)
-)
+# 这些路径前缀豁免 CSRF (AJAX 内部调用)
+CSRF_EXEMPT_PREFIXES = ()
 
 
 def _get_token() -> str:

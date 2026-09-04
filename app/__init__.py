@@ -1,7 +1,7 @@
 """
 家庭记账单 Web 应用 - 应用工厂 (MVT 架构)
 
-M (Model)    : app.models   SQLAlchemy 数据模型 (User / AccountItem / Asset / EditLock / Setting)
+M (Model)    : app.models   SQLAlchemy 数据模型 (User / AccountItem / Asset / Setting)
 V (View)     : app.views     蓝图视图 (dashboard / entries / analysis / settings)
 T (Template) : app.templates Jinja2 模板
 Services     : app.services  上下文 / 分析 / 公式 / 锁 / CSRF

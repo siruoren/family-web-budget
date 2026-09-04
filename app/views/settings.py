@@ -15,12 +15,9 @@ from sqlalchemy import select, func
 
 from .. import db
 from ..models import (
-    User, AccountItem, Asset, EditLock, Setting, MenuItem, ItemType,
+    User, AccountItem, Asset, Setting, MenuItem, ItemType,
 )
-from ..services.locking import (
-    get_setting, set_setting, get_lock_ttl, is_lock_enabled,
-    list_all_locks, force_release, force_release_all, cleanup_expired,
-)
+from ..services.settings import get_setting, set_setting
 from ..services.formula import get_formula, set_formula, get_all_types
 from ..services import auth
 
@@ -41,7 +38,6 @@ _SECTION_PARTIAL = {
     "import-export": "settings/_section_import_export.html",
     "formula": "settings/_section_formula.html",
     "security": "settings/_section_security.html",
-    "locks": "settings/_section_locks.html",
     "sysinfo": "settings/_section_sysinfo.html",
 }
 
@@ -61,7 +57,6 @@ def _ctx() -> dict:
         "items": db.session.query(func.count(AccountItem.id)).scalar() or 0,
         "types": db.session.query(func.count(ItemType.id)).scalar() or 0,
         "assets": db.session.query(func.count(Asset.id)).scalar() or 0,
-        "active_locks": db.session.query(func.count(EditLock.id)).scalar() or 0,
     }
     sys_info = {
         "python": platform.python_version(),
@@ -85,18 +80,10 @@ def _ctx() -> dict:
             AccountItem.type, AccountItem.sort_order, AccountItem.id
         )
     ).scalars().all()
-    lock_config = {
-        "enabled": is_lock_enabled(),
-        "ttl": get_lock_ttl(),
-        "heartbeat_interval": get_setting("heartbeat_interval", 60),
-        "sync_interval": get_setting("sync_interval", 30),
-    }
     return {
         "stats": stats, "sys_info": sys_info,
         "users": users, "items": items, "types": types,
         "menu_tree": _build_menu_tree(),
-        "lock_config": lock_config,
-        "active_locks": list_all_locks(),
         "all_settings": db.session.execute(
             select(Setting).order_by(Setting.key)
         ).scalars().all(),
@@ -476,60 +463,6 @@ def update_formula():
         return _done(False, "公式不能为空")
     set_formula(expr)
     return _done(True, f"公式已更新: {expr}", ("formula",))
-
-
-# -------------------------------------------------------------- 锁配置
-@bp.route("/lock-config", methods=["POST"])
-def update_lock_config():
-    ttl = request.form.get("lock_ttl", "180").strip()
-    enabled = request.form.get("lock_enabled") == "on"
-    heartbeat = request.form.get("heartbeat_interval", "60").strip()
-    sync_iv = request.form.get("sync_interval", "30").strip()
-    try:
-        ttl_val = int(ttl)
-        if ttl_val < 10 or ttl_val > 3600:
-            return _done(False, "锁 TTL 需在 10~3600 秒之间")
-    except ValueError:
-        return _done(False, "锁 TTL 必须是整数")
-    try:
-        hb_val = max(5, int(heartbeat))
-        sync_val = max(5, int(sync_iv))
-    except ValueError:
-        hb_val, sync_val = 60, 30
-    set_setting("lock_enabled", "1" if enabled else "0", "bool")
-    set_setting("lock_ttl", ttl_val, "int")
-    set_setting("heartbeat_interval", hb_val, "int")
-    set_setting("sync_interval", sync_val, "int")
-    return _done(
-        True,
-        f"并发锁配置已更新: TTL={ttl_val}s, "
-        f"{'启用' if enabled else '已禁用'}",
-        ("locks",),
-    )
-
-
-# -------------------------------------------------------------- 锁管理
-@bp.route("/locks/force-release/<int:lock_id>", methods=["POST"])
-def force_release_lock(lock_id):
-    ok = force_release(lock_id)
-    if ok:
-        return _done(True, f"已强制释放锁 #{lock_id}", ("locks", "sysinfo"))
-    return _done(False, f"锁 #{lock_id} 不存在或已释放")
-
-
-@bp.route("/locks/force-release-all", methods=["POST"])
-def force_release_all_locks():
-    confirm = request.form.get("confirm", "").strip()
-    if confirm != "确认清空":
-        return _done(False, "请输入 '确认清空' 以确认")
-    count = force_release_all()
-    return _done(True, f"已清空 {count} 个活跃锁", ("locks", "sysinfo"))
-
-
-@bp.route("/locks/cleanup", methods=["POST"])
-def cleanup_expired_locks():
-    count = cleanup_expired()
-    return _done(True, f"已清理 {count} 个过期锁", ("locks", "sysinfo"))
 
 
 # -------------------------------------------------------------- 菜单管理

@@ -19,7 +19,7 @@
 from sqlalchemy import select, func
 from .. import db
 from ..models import Asset, AccountItem, Setting
-from .locking import get_setting
+from .settings import get_setting
 
 
 # -------------------------------------------------------------- 公式文本
@@ -36,7 +36,7 @@ def get_formula() -> str:
 
 def set_formula(expr: str):
     """设置公式描述文本 (实际计算逻辑固定为双视角, 文本仅用于展示)"""
-    from .locking import set_setting
+    from .settings import set_setting
     set_setting("asset_formula", expr, "str")
 
 

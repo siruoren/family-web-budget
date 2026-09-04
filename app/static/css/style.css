@@ -380,7 +380,6 @@ table.data-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
 .empty-row { text-align: center; color: var(--muted); padding: 1.5rem; }
 .row-inactive { opacity: .5; }
 .row-default { background: var(--success-soft) !important; }
-.row-locked { background: var(--warning-soft) !important; }
 .row-missing { background: var(--warning-soft) !important; }
 .row-total { background: var(--primary-soft); font-weight: 700; }
 .ta-right { text-align: right; }
@@ -480,12 +479,33 @@ textarea { resize: vertical; }
 
 .inline-edit { display: inline-block; }
 .edit-pop {
-  position: absolute; z-index: 10; background: rgba(255,255,255,0.95);
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  z-index: 1000; background: rgba(255,255,255,0.98);
   backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
   border: 0.5px solid var(--separator); border-radius: var(--radius);
-  padding: .75rem; box-shadow: var(--shadow-md);
-  display: flex; flex-direction: column; gap: .35rem; min-width: 200px;
-  margin-top: .2rem;
+  padding: 1.5rem; box-shadow: var(--shadow-lg);
+  display: flex; flex-direction: column; gap: .5rem; min-width: 280px;
+  max-width: 90vw;
+}
+
+.edit-pop input {
+  width: 100%;
+  padding: 0.5rem;
+  border: 0.5px solid var(--separator);
+  border-radius: var(--radius);
+  margin-bottom: 0.5rem;
+}
+
+.edit-pop button {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+/* 模态背景遮罩 */
+details[open] .edit-pop::before {
+  content: "";
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.3); z-index: -1;
 }
 
 /* ---------- Flashes ---------- */
@@ -563,10 +583,6 @@ textarea { resize: vertical; }
 .empty-state { text-align: center; padding: 2.5rem 1rem; color: var(--muted); }
 .empty-state .icon { font-size: 2rem; margin-bottom: .5rem; }
 
-/* ---------- Lock status ---------- */
-.lock-status { font-size: .72rem; color: var(--muted); min-height: 1rem; line-height: 1.2; }
-.lock-status .locked { color: var(--danger); font-weight: 600; }
-.lock-status .locked-by-me { color: var(--success); font-weight: 600; }
 input:disabled.table-input { background: var(--bg-secondary); cursor: not-allowed; opacity: .6; }
 
 /* ---------- Accessibility ---------- */

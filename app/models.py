@@ -5,8 +5,7 @@
   User         : 用户 (可创建/切换/设默认), 含 password_hash / is_admin
   AccountItem  : 账户条目模板 (名称+类型+属主 唯一)
   Asset        : 月度资产记录; value/note 应用层混淆加密存储 (防 DB 文件泄露)
-  EditLock     : 并发编辑锁 (3 分钟自动释放)
-  Setting      : 键值配置 (锁TTL / 公式 / 全局开关)
+  Setting      : 键值配置 (公式 / 全局开关)
   MenuItem     : 左侧多级菜单
 
 安全说明:
@@ -223,30 +222,6 @@ class Asset(db.Model):
 
     def __repr__(self):
         return f"<Asset {self.period} item={self.account_item_id}>"
-
-
-class EditLock(db.Model):
-    """并发编辑锁 - 条目级, 默认 3 分钟自动释放"""
-    __tablename__ = "edit_lock"
-    __table_args__ = (
-        UniqueConstraint(
-            "resource_type", "resource_id", "period_key",
-            name="uq_resource_lock",
-        ),
-        Index("ix_lock_expires", "expires_at"),
-    )
-
-    id = db.Column(Integer, primary_key=True)
-    resource_type = db.Column(String(16), nullable=False)
-    resource_id = db.Column(Integer, nullable=False)
-    period_key = db.Column(String(8), nullable=False, default="")
-    user_id = db.Column(String(64), nullable=False)
-    user_label = db.Column(String(64), default="")
-    acquired_at = db.Column(DateTime, default=datetime.utcnow)
-    expires_at = db.Column(DateTime, nullable=False)
-
-    def __repr__(self):
-        return f"<EditLock {self.resource_type}:{self.resource_id} by {self.user_id}>"
 
 
 class Setting(db.Model):
