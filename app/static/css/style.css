@@ -630,6 +630,12 @@ section[data-section].flash-sec { box-shadow: 0 0 0 2px var(--primary, #2563eb) 
   border-radius: var(--radius);
   box-shadow: 0 4px 16px rgba(0,0,0,.12);
 }
+/* 桌面端: 偏移至表单区域左侧 (侧边栏240px + gap1rem + padding1rem) */
+@media (min-width: 961px) {
+  .fixed-save-bar {
+    left: calc(240px + 2rem);
+  }
+}
 .btn-save-fixed {
   padding: .5rem 1.1rem;
   font-size: .95rem;
