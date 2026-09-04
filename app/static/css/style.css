@@ -856,8 +856,9 @@ input:disabled.table-input { background: var(--bg-secondary); cursor: not-allowe
 
 /* 登录页移动端 */
 @media (max-width: 480px) {
-  .auth-wrap { padding: 1.5rem 1rem; }
-  .auth-card { padding: 1.25rem 1rem; }
+  .auth-wrap { padding: 1rem; }
+  .auth-card { padding: 2rem 1.5rem; }
+  .auth-card h2 { font-size: 1.5rem; }
 }
 
 /* =================================================================
@@ -888,23 +889,112 @@ input:disabled.table-input { background: var(--bg-secondary); cursor: not-allowe
 .admin-content { flex: 1; padding: 1.25rem 1.5rem; overflow: auto; max-width: 100%; }
 
 /* 登录页 */
-.auth-wrap { display: flex; justify-content: center; align-items: flex-start; padding: 4rem 1rem; }
+.auth-wrap { 
+  display: flex; justify-content: center; align-items: center; 
+  min-height: 100vh; padding: 2rem 1rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
 .auth-card {
-  background: var(--card-glass);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 0.5px solid var(--separator);
-  border-radius: var(--radius-xl); box-shadow: var(--shadow-md);
-  padding: 1.75rem 2rem; width: 100%; max-width: 420px;
+  background: white;
+  border-radius: 16px; 
+  box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+  padding: 2.5rem 2rem; width: 100%; max-width: 400px;
 }
-.auth-card h2 { margin: 0 0 .5rem; color: var(--primary); }
-.auth-card .form-row { margin: .75rem 0; }
-.auth-card .form-row label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: .25rem; }
+.auth-card h2 { 
+  margin: 0 0 0.5rem; 
+  color: #1a1a1a; 
+  font-size: 1.75rem; 
+  font-weight: 600;
+}
+.auth-card .auth-subtitle {
+  margin: 0 0 2rem;
+  color: #666;
+  font-size: 0.95rem;
+}
+.auth-card .form-row { margin: 1.25rem 0; }
+.auth-card .form-row label { 
+  display: block; 
+  font-size: 0.875rem; 
+  color: #374151; 
+  margin-bottom: 0.5rem; 
+  font-weight: 500;
+}
 .auth-card .form-row input {
-  width: 100%; padding: .5rem .6rem; border: 0.5px solid var(--separator);
-  border-radius: var(--radius); font-size: 1rem;
+  width: 100%; 
+  padding: 0.75rem 1rem; 
+  border: 1px solid #e5e7eb;
+  border-radius: 8px; 
+  font-size: 1rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
-.auth-card .form-actions { display: flex; gap: .5rem; margin-top: 1rem; }
+.auth-card .form-row input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+.auth-card .form-row input.disabled-input {
+  background: #f9fafb;
+  color: #6b7280;
+  cursor: not-allowed;
+}
+.auth-card .auth-options {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 1.5rem 0;
+}
+.auth-card .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: #374151;
+}
+.auth-card .checkbox-label input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+  cursor: pointer;
+}
+.auth-card .forgot-link {
+  color: #667eea;
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.auth-card .forgot-link:hover {
+  text-decoration: underline;
+}
+.auth-card .form-actions { 
+  display: flex; 
+  gap: 0.5rem; 
+  margin-top: 1.5rem; 
+}
+.auth-card .btn-block {
+  width: 100%;
+  padding: 0.875rem;
+  font-size: 1rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.auth-card .btn-block:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+}
+.auth-card .btn-block:active {
+  transform: translateY(0);
+}
+.auth-card .auth-footer {
+  margin-top: 1.5rem;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 0.8rem;
+}
 
 /* 公式配置 */
 .formula-form { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
