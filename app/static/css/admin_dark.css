@@ -160,6 +160,47 @@
 .admin-body .flash { border-radius: 10px; }
 .admin-body .dl-btns .btn { min-width: 8rem; }
 
+/* ---------- 导入导出 / 系统信息 (深底文字不清修复) ---------- */
+.admin-body .io-block {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+}
+.admin-body .io-block h4 { color: #fff; }
+.admin-body .card-body .muted,
+.admin-body .card-body .small { color: rgba(255, 255, 255, 0.6); }
+.admin-body code {
+  background: rgba(108, 63, 245, 0.22);
+  color: #ddd6fe;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: .8rem;
+}
+.admin-body input[type="file"] {
+  color: rgba(255, 255, 255, 0.88);
+  background: transparent;
+}
+.admin-body input[type="file"]::file-selector-button {
+  background: rgba(108, 63, 245, 0.3);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  padding: .3rem .7rem;
+  margin-right: .5rem;
+  cursor: pointer;
+}
+/* 统计卡 (系统信息) */
+.admin-body .stat-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: none;
+}
+.admin-body .stat-label { color: rgba(255, 255, 255, 0.55); }
+.admin-body .stat-value { color: #fff; }
+/* 键值表 (系统信息) */
+.admin-body .kv-table { color: #e2e2f0; }
+.admin-body .kv-table td { border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.admin-body .kv-table td:first-child { color: rgba(255, 255, 255, 0.55); }
+
 /* ---------- 移动端 ---------- */
 @media (max-width: 768px) {
   .admin-body .admin-layout { flex-direction: column; }

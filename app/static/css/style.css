@@ -932,11 +932,6 @@ input:disabled.table-input { background: var(--bg-secondary); cursor: not-allowe
   border-color: #667eea;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
-.auth-card .form-row input.disabled-input {
-  background: #f9fafb;
-  color: #6b7280;
-  cursor: not-allowed;
-}
 .auth-card .auth-options {
   display: flex;
   justify-content: space-between;
