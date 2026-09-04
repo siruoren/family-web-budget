@@ -51,26 +51,6 @@
   <div class="stat-card"><div class="stat-label">净额(收-支)</div><div class="stat-value">{{ (summary.income_total - summary.expense_total)|fmt_money }}</div></div>
 </section>
 
-{# ===== 顶部图表 (历史趋势 + 条目占比) ===== #}
-<section class="charts-row">
-  <div class="card chart-card">
-    <div class="card-hd">近 12 月趋势</div>
-    <canvas id="trendChart" height="120"></canvas>
-  </div>
-  <div class="card chart-card">
-    <div class="card-hd">
-      当月条目占比
-      <select id="pieTypeFilter" class="pie-type-filter" style="float:right;font-size:.8rem;">
-        <option value="">全部类型</option>
-        {% for t in pie_data.keys() %}
-        <option value="{{ t }}">{{ t }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <canvas id="pieChart" height="120"></canvas>
-  </div>
-</section>
-
 {# ===== 公式计算卡片 (双视角) ===== #}
 <section class="card formula-card {{ 'is-anomaly' if calc.anomaly }}">
   <div class="card-hd">
@@ -90,7 +70,7 @@
 </section>
 
 {# ===== Excel 表单式条目填写 ===== #}
-<form method="post" action="{{ url_for('entries.save') }}" class="entry-form">
+<form method="post" action="{{ url_for('entries.save') }}" class="entry-form" id="entryForm">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="year" value="{{ year }}">
   <input type="hidden" name="month" value="{{ month }}">
@@ -101,7 +81,7 @@
     <div class="card-hd">
       条目编辑表 <span class="muted">{{ all_items|length }} 项</span>
     </div>
-    <div class="table-wrap">
+    <div class="table-wrap entry-table-wrap">
       <table class="data-table entry-table">
         <thead>
           <tr>
@@ -111,8 +91,8 @@
             <th class="c-owner">属主</th>
             <th class="c-val">金额</th>
             <th class="c-note">备注</th>
-            <th class="c-stat">均值</th>
-            <th class="c-stat">合计</th>
+            <th class="c-stat c-stat-avg">均值</th>
+            <th class="c-stat c-stat-sum">合计</th>
             <th class="c-lock">锁</th>
           </tr>
         </thead>
@@ -124,27 +104,27 @@
           {% set locked_by_other = lk and lk.user_id != my_user_id %}
           {% set st = item_stats.get(it.id) %}
           <tr id="row-{{ it.id }}" data-type="{{ it.type }}" class="{{ 'row-locked' if locked_by_other }}{{ ' row-missing' if not a }}">
-            <td class="c-idx">{% set ns.c = ns.c + 1 %}{{ ns.c }}</td>
-            <td class="c-name">{{ it.name }}</td>
-            <td class="c-type"><span class="chip chip-{{ 'income' if it.type == '收入' else ('expense' if it.type == '支出' else 'balance') }}">{{ it.type }}</span></td>
-            <td class="c-owner">{{ it.owner }}</td>
-            <td class="c-val">
+            <td class="c-idx" data-label="序号">{% set ns.c = ns.c + 1 %}{{ ns.c }}</td>
+            <td class="c-name" data-label="名称">{{ it.name }}</td>
+            <td class="c-type" data-label="类型"><span class="chip chip-{{ 'income' if it.type == '收入' else ('expense' if it.type == '支出' else 'balance') }}">{{ it.type }}</span></td>
+            <td class="c-owner" data-label="属主">{{ it.owner }}</td>
+            <td class="c-val" data-label="金额">
               {% set carry = carry_map.get(it.id) if carry_map else none %}
-              <input type="number" step="0.01" name="item_{{ it.id }}"
+              <input type="number" step="0.01" inputmode="decimal" name="item_{{ it.id }}"
                      value="{{ a.value if a and a.value is not none else '' }}"
                      data-rt="asset" data-rid="{{ it.id }}"
                      {{ 'disabled' if locked_by_other }}
                      {% if carry %}placeholder="结转 {{ carry|fmt_money }}" data-carry="{{ carry }}"{% else %}placeholder="0.00"{% endif %}
                      class="table-input{{ ' input-carry' if carry }}">
             </td>
-            <td class="c-note">
+            <td class="c-note" data-label="备注">
               <input type="text" name="note_{{ it.id }}"
                      value="{{ a.note if a else '' }}" maxlength="120"
                      class="table-input">
             </td>
-            <td class="c-stat muted">{{ st.avg|fmt_money if st else '-' }}</td>
-            <td class="c-stat muted">{{ st.sum|fmt_money if st else '-' }}</td>
-            <td class="c-lock" id="lock-{{ it.id }}">
+            <td class="c-stat c-stat-avg muted" data-label="均值">{{ st.avg|fmt_money if st else '-' }}</td>
+            <td class="c-stat c-stat-sum muted" data-label="合计">{{ st.sum|fmt_money if st else '-' }}</td>
+            <td class="c-lock" data-label="状态" id="lock-{{ it.id }}">
               {% if locked_by_other %}
                 <span class="locked" title="被 {{ lk.user_label }} 锁定">🔒 {{ lk.user_label }}</span>
               {% elif not a %}
@@ -161,12 +141,14 @@
           <tr class="row-total">
             <td colspan="4" class="ta-right"><b>分组合计</b></td>
             <td class="c-val" colspan="5">
-              <span class="sum-chip sum-income">收入 <b id="sumIncome">0.00</b></span>
-              <span class="sum-chip sum-expense">支出 <b id="sumExpense">0.00</b></span>
-              <span class="sum-chip sum-balance">储蓄 <b id="sumBalance">0.00</b></span>
-              <span class="sum-chip sum-savings">储蓄 <b id="sumSavings">0.00</b></span>
-              <span class="sum-chip sum-investment">理财 <b id="sumInvestment">0.00</b></span>
-              <span class="sum-chip sum-net">净额(收-支) <b id="sumNet">0.00</b></span>
+              <div class="sum-chips-wrap">
+                <span class="sum-chip sum-income">收入 <b id="sumIncome">0.00</b></span>
+                <span class="sum-chip sum-expense">支出 <b id="sumExpense">0.00</b></span>
+                <span class="sum-chip sum-balance">储蓄 <b id="sumBalance">0.00</b></span>
+                <span class="sum-chip sum-savings">资产 <b id="sumSavings">0.00</b></span>
+                <span class="sum-chip sum-investment">理财 <b id="sumInvestment">0.00</b></span>
+                <span class="sum-chip sum-net">净额(收-支) <b id="sumNet">0.00</b></span>
+              </div>
             </td>
           </tr>
         </tfoot>
@@ -175,9 +157,13 @@
     </div>
   </div>
 
-  <div class="form-actions">
-    <button type="submit" class="btn btn-primary">保存数据</button>
-    <a class="btn" href="{{ url_for('entries.index', type=current_type, owner=current_owner, year=year, month=month) }}">刷新</a>
+  {# 固定保存按钮 - 左下角跟随滑动 #}
+  <div class="fixed-save-bar" id="fixedSaveBar">
+    <button type="submit" class="btn btn-primary btn-save-fixed" id="btnSave">
+      <span class="btn-save-icon">💾</span>
+      <span class="btn-save-text">保存数据</span>
+    </button>
+    <a class="btn btn-secondary btn-refresh-fixed" href="{{ url_for('entries.index', type=current_type, owner=current_owner, year=year, month=month) }}">刷新</a>
   </div>
 </form>
 {% endblock %}
@@ -185,68 +171,6 @@
 {% block scripts %}
 <script>
   window.EDIT_LOCK = { year: {{ year }}, month: {{ month }}, userId: "{{ my_user_id }}" };
-  var SERIES = {{ series|tojson }};
-  var PIE_DATA = {{ pie_data|tojson }};
-</script>
-<script src="{{ url_for('static', filename='js/edit_lock.js') }}"></script>
-<script>
-// 顶部趋势图
-(function () {
-  var c1 = document.getElementById("trendChart");
-  if (c1 && window.Chart) {
-    new Chart(c1, {
-      type: "line",
-      data: {
-        labels: SERIES.map(function (s) { return s.label; }),
-        datasets: [
-          { label: "收入", data: SERIES.map(function(s){return s.income;}), borderColor: "#16a34a", backgroundColor: "rgba(22,163,74,.1)", tension: .3 },
-          { label: "支出", data: SERIES.map(function(s){return s.expense;}), borderColor: "#dc2626", backgroundColor: "rgba(220,38,38,.1)", tension: .3 },
-          { label: "储蓄", data: SERIES.map(function(s){return s.balance;}), borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.1)", tension: .3 },
-          { label: "理财", data: SERIES.map(function(s){return s.investment || 0;}), borderColor: "#d97706", backgroundColor: "rgba(217,119,6,.1)", tension: .3 },
-          { label: "资产总和", data: SERIES.map(function(s){return s.savings || 0;}), borderColor: "#7c3aed", backgroundColor: "rgba(124,58,237,.1)", tension: .3 }
-        ]
-      },
-      options: { responsive: true, plugins: { legend: { position: "bottom" } }, scales: { y: { beginAtZero: true } } }
-    });
-  }
-})();
-
-// 当月条目占比 (带类型筛选: 全部 / 指定类型)
-var pieChart = null;
-function renderPie(typeFilter) {
-  var canvas = document.getElementById("pieChart");
-  if (!canvas || !window.Chart) return;
-  var items = [];
-  var types = Object.keys(PIE_DATA);
-  if (typeFilter && PIE_DATA[typeFilter]) {
-    // 选中类型: 显示该类型下各条目金额占比
-    PIE_DATA[typeFilter].forEach(function (it) {
-      items.push({ label: it.name + " (" + it.owner + ")", value: it.value });
-    });
-  } else {
-    // 全部类型: 显示所有条目金额占比
-    types.forEach(function (t) {
-      PIE_DATA[t].forEach(function (it) {
-        items.push({ label: it.name, value: it.value });
-      });
-    });
-  }
-  if (pieChart) { pieChart.destroy(); pieChart = null; }
-  if (!items.length) return;
-  var colors = ["#16a34a","#dc2626","#2563eb","#d97706","#7c3aed","#0891b2","#db2777","#65a30d","#ea580c","#0284c7","#9333ea","#ca8a04"];
-  pieChart = new Chart(canvas, {
-    type: "doughnut",
-    data: { labels: items.map(function(i){return i.label;}),
-            datasets: [{ data: items.map(function(i){return i.value;}), backgroundColor: colors }] },
-    options: { responsive: true, plugins: { legend: { position: "right" } } }
-  });
-}
-renderPie("");
-
-var pieSel = document.getElementById("pieTypeFilter");
-if (pieSel) {
-  pieSel.addEventListener("change", function () { renderPie(pieSel.value); });
-}
 
 // 实时合计 (按类型分组: 收入 / 支出 / 储蓄 / 理财 / 资产总和 / 净额)
 (function () {
@@ -256,13 +180,11 @@ if (pieSel) {
   var sumExpense = document.getElementById('sumExpense');
   var sumBalance = document.getElementById('sumBalance');
   var sumNet = document.getElementById('sumNet');
-  // 动态收集所有出现过的类型 (兼容用户自定义类型, 非收/支/储的归到"其他")
   function calcTotal() {
     var sums = { "收入": 0, "支出": 0, "储蓄": 0, "理财": 0, "资产总和": 0, "其他": 0 };
     inputs.forEach(function (el) {
       var v = parseFloat(el.value);
       if (isNaN(v)) {
-        // 储蓄结转占位: 未输入但有 data-carry 时计入结转值
         var carry = el.getAttribute('data-carry');
         if (carry) {
           var cv = parseFloat(carry);
@@ -292,5 +214,17 @@ if (pieSel) {
   inputs.forEach(function (el) { el.addEventListener('input', calcTotal); });
   calcTotal();
 })();
+
+// 保存按钮加载状态
+(function () {
+  var form = document.getElementById('entryForm');
+  var btn = document.getElementById('btnSave');
+  if (!form || !btn) return;
+  form.addEventListener('submit', function () {
+    btn.classList.add('btn-loading');
+    btn.querySelector('.btn-save-text').textContent = '保存中…';
+  });
+})();
 </script>
+<script src="{{ url_for('static', filename='js/edit_lock.js') }}"></script>
 {% endblock %}
