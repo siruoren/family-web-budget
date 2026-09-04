@@ -58,6 +58,7 @@ def user_login():
     return render_template(
         "auth/animated_login.html",
         user=user, next_url=request.args.get("next", ""),
+        all_users=db.session.query(User).order_by(User.sort_order, User.id).all(),
     )
 
 

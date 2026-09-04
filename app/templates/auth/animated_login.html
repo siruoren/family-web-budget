@@ -92,7 +92,7 @@
         </div>
         <div class="form-header">
           <h1>欢迎回来</h1>
-          <p>{{ user.name }} · 请输入密码登录</p>
+          <p>{{ user.name }} · {{ '请输入密码登录' if user.password_hash else '可直接登录（未设密码）' }}</p>
         </div>
 
         <form id="login-form" method="post"
@@ -102,17 +102,21 @@
           <div class="form-group">
             <label id="username-label" for="username">用户</label>
             <div class="input-wrapper">
-              <input type="text" id="username" value="{{ user.name }}" disabled
-                     class="disabled-input" />
+              <select id="username" class="user-select" autocomplete="off"
+                      onchange="if(this.value){var u=new URL(location.href);u.searchParams.set('uid',this.value);u.searchParams.delete('next');location.href=u;}">
+                {% for u in all_users %}
+                <option value="{{ u.id }}" {% if u.id == user.id %}selected{% endif %}>{{ u.name }}{{ ' (默认)' if u.is_default else '' }}</option>
+                {% endfor %}
+              </select>
             </div>
           </div>
 
-          {% if user.password_hash %}
           <div class="form-group">
-            <label id="password-label" for="password">密码</label>
+            <label id="password-label" for="password">{{ '密码' if user.password_hash else '密码（可选，未设置可留空）' }}</label>
             <div class="input-wrapper">
               <input type="password" id="password" name="password"
-                     placeholder="请输入密码" autocomplete="current-password" autofocus />
+                     placeholder="{{ '请输入密码' if user.password_hash else '留空直接登录' }}"
+                     autocomplete="current-password" autofocus />
               <button type="button" class="toggle-password" id="toggle-password">
                 <svg id="eye-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -127,11 +131,6 @@
               </button>
             </div>
           </div>
-          {% else %}
-          <div class="form-group">
-            <p class="no-password-info">该用户未设置密码, 可直接登录</p>
-          </div>
-          {% endif %}
 
           <div class="error-msg" id="error-msg"></div>
 
