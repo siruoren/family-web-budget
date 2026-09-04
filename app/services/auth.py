@@ -121,8 +121,13 @@ def unlock_user(uid: int, password: str) -> tuple[bool, str]:
     user = db.session.get(User, uid)
     if not user:
         return False, "用户不存在"
+    # 如果用户没有设置密码，允许空密码登录
     if not user.password_hash:
-        return False, "该用户尚未设置密码"
+        user_key = crypto.derive_user_key("")  # 使用空密码派生密钥
+        crypto.set_current_user_key(user_key)
+        crypto.save_key_to_cookie(uid, user_key)
+        return True, "登录成功"
+    # 有密码用户需要验证
     if not verify_password(password, user.password_hash):
         return False, "密码错误"
     # 派生密钥, 写持久 cookie (暂存到 session, 由 after_request 写出)
@@ -154,12 +159,11 @@ def _is_auth_exempt() -> bool:
 
 
 def _need_user_unlock() -> bool:
-    """当前用户是否需要先解锁 (有密码且未解锁)"""
+    """当前用户是否需要先解锁 (始终需要登录)"""
     user = getattr(g, "current_user", None)
     if user is None:
         return False
-    if not getattr(user, "password_hash", None):
-        return False  # 无密码, 不门禁
+    # 始终需要登录，无论是否设置了密码
     return crypto.get_current_user_key() is None
 
 

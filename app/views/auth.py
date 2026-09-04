@@ -34,14 +34,19 @@ def user_login():
     if not user:
         flash("用户不存在", "error")
         return redirect(url_for("dashboard.index"))
-    if not user.password_hash:
-        flash("该用户尚未设置密码, 请联系管理员设置", "info")
-        return redirect(url_for("auth.admin_login", next=request.args.get("next", "")))
 
     if request.method == "POST":
         password = request.form.get("password", "")
-        # CSRF: auth 蓝图虽豁免 before_request 网关, 但 CSRF 仍由全局保护;
-        # 不过 CSRF_EXEMPT 未含 /auth, 故需带 token, 表单已含
+        # 如果用户没有设置密码，允许空密码登录
+        if not user.password_hash:
+            # 无密码用户直接生成密钥并登录
+            user_key = crypto.derive_user_key("")  # 使用空密码派生密钥
+            crypto.set_current_user_key(user_key)
+            crypto.save_key_to_cookie(uid, user_key)
+            flash("登录成功", "success")
+            return redirect(_safe_next("dashboard.index"))
+        
+        # 有密码用户需要验证
         ok, msg = auth.unlock_user(uid, password)
         if ok:
             flash(msg, "success")
@@ -51,7 +56,7 @@ def user_login():
                                 next=request.args.get("next", "")))
 
     return render_template(
-        "auth/user_login.html",
+        "auth/animated_login.html",
         user=user, next_url=request.args.get("next", ""),
     )
 

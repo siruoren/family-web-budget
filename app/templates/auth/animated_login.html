@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="csrf-token" content="{{ csrf_token() }}" />
+  <title>君军之家 · 登录</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/animated_login.css') }}" />
+</head>
+<body>
+
+  {# ---- flash messages ---- #}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for cat, msg in messages %}
+        <div class="flash-bar flash-{{ cat }}">{{ msg }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div id="login-page">
+    <!-- Left Panel - Animated Characters -->
+    <div class="left-panel">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+          <path d="M12 2L15 9H9L12 2Z" />
+          <path d="M12 22L9 15H15L12 22Z" />
+          <path d="M2 12L9 9V15L2 12Z" />
+          <path d="M22 12L15 15V9L22 12Z" />
+        </svg>
+        <span>君军之家 · 记账单</span>
+      </div>
+
+      <div class="characters-wrapper">
+        <div class="characters-scene" id="characters-scene">
+          <!-- Purple character -->
+          <div class="character char-purple" id="char-purple">
+            <div class="eyes" id="purple-eyes" style="left: 45px; top: 40px; gap: 28px">
+              <div class="eyeball" id="purple-eye-l" style="width: 18px; height: 18px">
+                <div class="pupil" id="purple-pupil-l" style="width: 7px; height: 7px"></div>
+              </div>
+              <div class="eyeball" id="purple-eye-r" style="width: 18px; height: 18px">
+                <div class="pupil" id="purple-pupil-r" style="width: 7px; height: 7px"></div>
+              </div>
+            </div>
+          </div>
+          <!-- Black character -->
+          <div class="character char-black" id="char-black">
+            <div class="eyes" id="black-eyes" style="left: 26px; top: 32px; gap: 20px">
+              <div class="eyeball" id="black-eye-l" style="width: 16px; height: 16px">
+                <div class="pupil" id="black-pupil-l" style="width: 6px; height: 6px"></div>
+              </div>
+              <div class="eyeball" id="black-eye-r" style="width: 16px; height: 16px">
+                <div class="pupil" id="black-pupil-r" style="width: 6px; height: 6px"></div>
+              </div>
+            </div>
+          </div>
+          <!-- Orange semi-circle -->
+          <div class="character char-orange" id="char-orange">
+            <div class="eyes" id="orange-eyes" style="left: 82px; top: 90px; gap: 28px">
+              <div class="bare-pupil" id="orange-pupil-l"></div>
+              <div class="bare-pupil" id="orange-pupil-r"></div>
+            </div>
+            <div class="orange-mouth" id="orange-mouth" style="left: 90px; top: 120px"></div>
+          </div>
+          <!-- Yellow rounded -->
+          <div class="character char-yellow" id="char-yellow">
+            <div class="eyes" id="yellow-eyes" style="left: 52px; top: 40px; gap: 20px">
+              <div class="bare-pupil" id="yellow-pupil-l"></div>
+              <div class="bare-pupil" id="yellow-pupil-r"></div>
+            </div>
+            <div class="yellow-mouth" id="yellow-mouth" style="left: 40px; top: 88px"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-links">
+        <span>家庭记账单系统 v2.0</span>
+      </div>
+    </div>
+
+    <!-- Right Panel - Login Form -->
+    <div class="right-panel">
+      <div class="form-container">
+        <div class="sparkle-icon">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L13.5 9H10.5L12 2Z" fill="#1a1a2e" />
+            <path d="M12 22L10.5 15H13.5L12 22Z" fill="#1a1a2e" />
+            <path d="M2 12L9 10.5V13.5L2 12Z" fill="#1a1a2e" />
+            <path d="M22 12L15 13.5V10.5L22 12Z" fill="#1a1a2e" />
+          </svg>
+        </div>
+        <div class="form-header">
+          <h1>欢迎回来</h1>
+          <p>{{ user.name }} · 请输入密码登录</p>
+        </div>
+
+        <form id="login-form" method="post"
+              action="{{ url_for('auth.user_login', uid=user.id, next=next_url) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="form-group">
+            <label id="username-label" for="username">用户</label>
+            <div class="input-wrapper">
+              <input type="text" id="username" value="{{ user.name }}" disabled
+                     class="disabled-input" />
+            </div>
+          </div>
+
+          {% if user.password_hash %}
+          <div class="form-group">
+            <label id="password-label" for="password">密码</label>
+            <div class="input-wrapper">
+              <input type="password" id="password" name="password"
+                     placeholder="请输入密码" autocomplete="current-password" autofocus />
+              <button type="button" class="toggle-password" id="toggle-password">
+                <svg id="eye-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+                <svg id="eye-off-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                  <line x1="1" y1="1" x2="23" y2="23"></line>
+                </svg>
+              </button>
+            </div>
+          </div>
+          {% else %}
+          <div class="form-group">
+            <p class="no-password-info">该用户未设置密码, 可直接登录</p>
+          </div>
+          {% endif %}
+
+          <div class="error-msg" id="error-msg"></div>
+
+          <button type="submit" class="btn-login" id="btn-login">
+            <span class="btn-text">登录</span>
+            <div class="btn-hover-content">
+              <span>登录</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12" />
+                <polyline points="12 5 19 12 12 19" />
+              </svg>
+            </div>
+          </button>
+        </form>
+
+        <div class="login-footer">
+          <p>验证后解锁密钥以持久 Cookie 保存 30 天</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/animated_login.js') }}"></script>
+</body>
+</html>

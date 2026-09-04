@@ -1,0 +1,448 @@
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #1a1a2e;
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* ============ Flash bar ============ */
+.flash-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  padding: 10px 24px;
+  font-size: 14px;
+  text-align: center;
+  animation: slideDown 0.3s ease;
+}
+.flash-error { background: rgba(220,38,38,.95); color: #fff; }
+.flash-success { background: rgba(22,163,74,.95); color: #fff; }
+.flash-warning { background: rgba(217,119,6,.95); color: #fff; }
+.flash-info { background: rgba(37,99,235,.95); color: #fff; }
+@keyframes slideDown { from { transform: translateY(-100%); } to { transform: translateY(0); } }
+
+/* ============ LOGIN PAGE ============ */
+#login-page {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 100vh;
+}
+
+/* Left Panel */
+.left-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: linear-gradient(135deg, #d4d0dc 0%, #c8c4d0 50%, #bbb7c5 100%);
+  padding: 40px 48px;
+  overflow: hidden;
+}
+
+.left-panel .logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  z-index: 10;
+  position: relative;
+}
+
+.left-panel .logo svg {
+  width: 28px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.characters-wrapper {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 420px;
+}
+
+.left-panel .footer-links {
+  display: flex;
+  gap: 28px;
+  font-size: 13px;
+  color: rgba(80, 70, 90, 0.7);
+  z-index: 10;
+  position: relative;
+}
+
+/* Decorative blurs */
+.left-panel::after {
+  content: "";
+  position: absolute;
+  top: 20%;
+  right: 15%;
+  width: 260px;
+  height: 260px;
+  background: rgba(180, 170, 200, 0.25);
+  border-radius: 50%;
+  filter: blur(80px);
+}
+
+.left-panel::before {
+  content: "";
+  position: absolute;
+  bottom: 15%;
+  left: 10%;
+  width: 350px;
+  height: 350px;
+  background: rgba(200, 195, 210, 0.2);
+  border-radius: 50%;
+  filter: blur(100px);
+}
+
+/* Right Panel */
+.right-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  padding: 40px;
+}
+
+.form-container {
+  width: 100%;
+  max-width: 400px;
+}
+
+/* Sparkle icon */
+.sparkle-icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.sparkle-icon svg {
+  width: 32px;
+  height: 32px;
+}
+
+.form-header {
+  text-align: center;
+  margin-bottom: 36px;
+}
+
+.form-header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1a1a2e;
+  letter-spacing: -0.5px;
+  margin-bottom: 6px;
+}
+
+.form-header p {
+  font-size: 14px;
+  color: #888;
+}
+
+/* Form fields */
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.form-group .input-wrapper {
+  position: relative;
+}
+
+.form-group input {
+  width: 100%;
+  height: 48px;
+  border: none;
+  border-bottom: 1.5px solid #e0e0e0;
+  padding: 0 40px 0 0;
+  font-size: 15px;
+  font-family: inherit;
+  color: #1a1a2e;
+  background: transparent;
+  outline: none;
+  transition: border-color 0.3s;
+}
+
+.form-group input:focus {
+  border-bottom-color: #5b21b6;
+}
+
+.form-group input::placeholder {
+  color: #ccc;
+}
+
+.form-group input[type="password"]:not(:placeholder-shown) {
+  font-family: inherit;
+  letter-spacing: 2px;
+}
+
+.form-group input::-ms-reveal,
+.form-group input::-ms-clear {
+  display: none;
+}
+
+/* Disabled input (username) */
+.disabled-input {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* No password info */
+.no-password-info {
+  padding: 12px 16px;
+  background: rgba(22, 163, 74, 0.08);
+  border: 1px solid rgba(22, 163, 74, 0.2);
+  border-radius: 10px;
+  font-size: 14px;
+  color: #16a34a;
+}
+
+/* Toggle password */
+.toggle-password {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #666;
+  padding: 6px;
+  transition: color 0.2s;
+}
+
+.toggle-password:hover {
+  color: #333;
+}
+
+/* Login button */
+.btn-login {
+  position: relative;
+  width: 100%;
+  height: 50px;
+  border-radius: 25px;
+  border: 1.5px solid #1a1a2e;
+  background: #1a1a2e;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  margin-bottom: 14px;
+  transition: all 0.3s;
+}
+
+.btn-login .btn-text {
+  display: inline-block;
+  transition: all 0.3s;
+}
+
+.btn-login .btn-hover-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #5b21b6;
+  color: #fff;
+  opacity: 0;
+  transition: all 0.3s;
+  border-radius: 25px;
+}
+
+.btn-login:hover .btn-text {
+  transform: translateX(40px);
+  opacity: 0;
+}
+
+.btn-login:hover .btn-hover-content {
+  opacity: 1;
+}
+
+.btn-login:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Footer */
+.login-footer {
+  text-align: center;
+  font-size: 13px;
+  color: #888;
+  margin-top: 32px;
+}
+
+/* ============ ANIMATED CHARACTERS ============ */
+.characters-scene {
+  position: relative;
+  width: 480px;
+  height: 360px;
+}
+
+.character {
+  position: absolute;
+  bottom: 0;
+  transition: all 0.7s ease-in-out;
+  transform-origin: bottom center;
+}
+
+.char-purple {
+  left: 60px;
+  width: 170px;
+  height: 370px;
+  background: #6c3ff5;
+  border-radius: 10px 10px 0 0;
+  z-index: 1;
+}
+
+.char-black {
+  left: 220px;
+  width: 115px;
+  height: 290px;
+  background: #2d2d2d;
+  border-radius: 8px 8px 0 0;
+  z-index: 2;
+}
+
+.char-orange {
+  left: 0;
+  width: 230px;
+  height: 190px;
+  background: #ff9b6b;
+  border-radius: 115px 115px 0 0;
+  z-index: 3;
+}
+
+.char-yellow {
+  left: 290px;
+  width: 135px;
+  height: 215px;
+  background: #e8d754;
+  border-radius: 68px 68px 0 0;
+  z-index: 4;
+}
+
+.eyes {
+  position: absolute;
+  display: flex;
+  transition: all 0.7s ease-in-out;
+}
+
+.eyeball {
+  border-radius: 50%;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: height 0.15s ease;
+  overflow: hidden;
+}
+
+.pupil {
+  border-radius: 50%;
+  background: #2d2d2d;
+  transition: transform 0.1s ease-out;
+}
+
+.bare-pupil {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #2d2d2d;
+  transition: transform 0.7s ease-in-out;
+}
+
+.yellow-mouth {
+  position: absolute;
+  width: 50px;
+  height: 4px;
+  background: #2d2d2d;
+  border-radius: 2px;
+  transition: all 0.7s ease-in-out;
+}
+
+@keyframes shakeHead {
+  0%, 100% { translate: 0 0; }
+  10% { translate: -9px 0; }
+  20% { translate: 7px 0; }
+  30% { translate: -6px 0; }
+  40% { translate: 5px 0; }
+  50% { translate: -4px 0; }
+  60% { translate: 3px 0; }
+  70% { translate: -2px 0; }
+  80% { translate: 1px 0; }
+  90% { translate: -0.5px 0; }
+}
+
+.eyes.shake-head,
+.yellow-mouth.shake-head,
+.orange-mouth.shake-head {
+  animation: shakeHead 0.8s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+.orange-mouth {
+  position: absolute;
+  width: 28px;
+  height: 14px;
+  border: 3px solid #2d2d2d;
+  border-top: none;
+  border-radius: 0 0 14px 14px;
+  opacity: 0;
+  transition: all 0.7s ease-in-out;
+}
+
+.orange-mouth.visible {
+  opacity: 1;
+}
+
+.error-msg {
+  display: none;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+
+.form-group input.error {
+  border-bottom-color: #dc2626;
+}
+
+.form-group label.error-label {
+  color: #dc2626;
+}
+
+@media (max-width: 900px) {
+  #login-page {
+    grid-template-columns: 1fr;
+  }
+  .left-panel {
+    display: none;
+  }
+}
