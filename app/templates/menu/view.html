@@ -1,35 +1,55 @@
 {% extends "base.html" %}
-{% block title %}{{ menu.name }} · {{ year }}年{{ month }}月{% endblock %}
+{% block title %}{{ menu.name }} · {{ range_label }}{% endblock %}
 
 {% block content %}
 <div class="page-head">
-  <h2>{{ menu.name }} <small>{{ year }}年{{ month }}月 · {{ current_user_name }}</small></h2>
+  <h2>{{ menu.name }} <small>{{ range_label }} · {{ current_user_name }}</small></h2>
   <div class="page-actions">
-    <form class="period-form auto-submit" method="get" action="{{ url_for('menu.view', menu_id=menu.id) }}">
-      <select name="year" title="年份">
-        {% for y in available_years %}
-        <option value="{{ y }}" {{ 'selected' if y == year }}>{{ y }}年</option>
+    <form class="period-range auto-submit" method="get" action="{{ url_for('menu.view', menu_id=menu.id) }}">
+      <label>起 <select name="yf" title="起始年份">
+        {% for y in year_options %}
+        <option value="{{ y }}" {{ 'selected' if y == yf }}>{{ y }}年</option>
+        {% endfor %}
+      </select></label>
+      <select name="mf" title="起始月份">
+        {% for m in range(1, 13) %}
+        <option value="{{ m }}" {{ 'selected' if m == mf }}>{{ m }}月</option>
         {% endfor %}
       </select>
-      <select name="month" title="月份">
+      <span class="muted">至</span>
+      <label><select name="yt" title="结束年份">
+        {% for y in year_options %}
+        <option value="{{ y }}" {{ 'selected' if y == yt }}>{{ y }}年</option>
+        {% endfor %}
+      </select></label>
+      <select name="mt" title="结束月份">
         {% for m in range(1, 13) %}
-        <option value="{{ m }}" {{ 'selected' if m == month }}>{{ m }}月</option>
+        <option value="{{ m }}" {{ 'selected' if m == mt }}>{{ m }}月</option>
         {% endfor %}
       </select>
     </form>
-    <a class="btn btn-sm" href="{{ url_for('entries.index', year=year, month=month) }}">全部条目</a>
+    <a class="btn btn-sm" href="{{ url_for('entries.index', year=yt, month=mt) }}">全部条目</a>
   </div>
 </div>
 
-<section class="stats-grid">
+<section class="stats-grid stats-grid-wide">
   <div class="stat-card"><div class="stat-label">条目数</div><div class="stat-value">{{ items|length }}</div></div>
-  <div class="stat-card stat-balance"><div class="stat-label">合计</div><div class="stat-value">{{ total|fmt_money }}</div></div>
+  <div class="stat-card stat-balance"><div class="stat-label">区间合计</div><div class="stat-value">{{ growth.range_total|fmt_money }}</div></div>
+  <div class="stat-card stat-growth {{ 'stat-up' if growth.delta > 0 else ('stat-down' if growth.delta < 0 else '') }}">
+    <div class="stat-label">增长分析 <span class="growth-trend">{{ growth.trend }}</span></div>
+    <div class="stat-value">{{ growth.delta|fmt_money }}</div>
+    <div class="stat-sub">
+      <span class="growth-range">{{ growth.first_value|fmt_money }} → {{ growth.last_value|fmt_money }}</span>
+      <span class="growth-pct {{ 'pct-up' if growth.growth_rate > 0 else ('pct-down' if growth.growth_rate < 0 else '') }}">{{ '%.2f'|format(growth.growth_rate) }}%</span>
+    </div>
+  </div>
+  <div class="stat-card"><div class="stat-label">月均</div><div class="stat-value">{{ growth.avg_monthly|fmt_money }}</div></div>
 </section>
 
 <section class="charts-row">
   <div class="card chart-card">
     <div class="card-hd">
-      近 12 月趋势
+      区间逐月趋势 ({{ growth.month_count }}月)
       <select id="itemFilter" class="pie-type-filter" style="float:right;font-size:.8rem;">
         <option value="">菜单合计</option>
         {% for it in items %}
@@ -41,7 +61,7 @@
   </div>
   <div class="card chart-card">
     <div class="card-hd">
-      当月条目占比
+      区间条目占比
       <select id="pieTypeFilter" class="pie-type-filter" style="float:right;font-size:.8rem;">
         <option value="">全部类型</option>
         {% for t in pie_data.keys() %}
@@ -55,14 +75,18 @@
 
 <form method="post" action="{{ url_for('menu.save', menu_id=menu.id) }}" class="entry-form" id="entryForm">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <input type="hidden" name="year" value="{{ year }}">
-  <input type="hidden" name="month" value="{{ month }}">
+  <input type="hidden" name="year" value="{{ yt }}">
+  <input type="hidden" name="month" value="{{ mt }}">
+  <input type="hidden" name="yf" value="{{ yf }}">
+  <input type="hidden" name="mf" value="{{ mf }}">
+  <input type="hidden" name="yt" value="{{ yt }}">
+  <input type="hidden" name="mt" value="{{ mt }}">
 
   <div class="card entry-card" id="entryCard">
     <div class="card-hd entry-card-hd">
-      <span>条目编辑表 <span class="muted">{{ items|length }} 项</span></span>
+      <span>条目编辑表 <span class="muted">{{ items|length }} 项 · {{ yt }}年{{ mt }}月</span></span>
       <div class="entry-card-actions">
-        <a class="btn btn-sm btn-secondary" href="{{ url_for('menu.view', menu_id=menu.id, year=year, month=month) }}" title="刷新数据">🔄 刷新</a>
+        <a class="btn btn-sm btn-secondary" href="{{ url_for('menu.view', menu_id=menu.id, yf=yf, mf=mf, yt=yt, mt=mt) }}" title="刷新数据">🔄 刷新</a>
         <button type="button" class="btn btn-sm btn-primary" id="btnBatchEdit" title="进入批量编辑模式">✏️ 批量编辑</button>
         <button type="submit" class="btn btn-sm btn-primary" id="btnSave" disabled style="opacity:.4;pointer-events:none">💾 保存</button>
       </div>
@@ -75,10 +99,10 @@
             <th class="c-name">名称</th>
             <th class="c-type">类型</th>
             <th class="c-owner">属主</th>
-            <th class="c-val">金额</th>
+            <th class="c-val">金额 ({{ yt }}年{{ mt }}月)</th>
             <th class="c-note">备注</th>
-            <th class="c-stat c-stat-avg">均值</th>
-            <th class="c-stat c-stat-sum">合计</th>
+            <th class="c-stat c-stat-avg">月均</th>
+            <th class="c-stat c-stat-sum">区间合计</th>
             <th class="c-status">状态</th>
           </tr>
         </thead>
@@ -103,8 +127,8 @@
                      value="{{ a.note if a else '' }}" maxlength="120"
                      class="table-input" readonly>
             </td>
-            <td class="c-stat c-stat-avg muted font-nums" data-label="均值">{{ st.avg|fmt_money if st else '-' }}</td>
-            <td class="c-stat c-stat-sum muted font-nums" data-label="合计">{{ st.sum|fmt_money if st else '-' }}</td>
+            <td class="c-stat c-stat-avg muted font-nums" data-label="月均">{{ st.avg|fmt_money if st else '-' }}</td>
+            <td class="c-stat c-stat-sum muted font-nums" data-label="区间合计">{{ st.sum|fmt_money if st else '-' }}</td>
             <td class="c-status" data-label="状态">
               {% if not a %}
                 <span class="chip chip-warn" title="未填写">未填</span>
@@ -144,8 +168,9 @@
   var SERIES = {{ series|tojson }};
   var PIE_DATA = {{ pie_data|tojson }};
   var ITEM_SERIES = {{ item_series_map|tojson }};
+  var GROWTH = {{ growth|tojson }};
 
-  // 近 12 月趋势 (按选中字段切换: 菜单合计 / 单条目历史)
+  // 区间逐月趋势 (按选中字段切换: 菜单合计 / 单条目历史)
   var trendChart = null;
   function renderTrend(itemId) {
     var canvas = document.getElementById("trendChart");
@@ -179,7 +204,7 @@
     itemSel.addEventListener("change", function () { renderTrend(itemSel.value); });
   }
 
-  // 当月条目占比 (带类型筛选)
+  // 区间条目占比 (带类型筛选)
   var pieChart = null;
   function renderPie(typeFilter) {
     var canvas = document.getElementById("pieChart");

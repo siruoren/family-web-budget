@@ -313,6 +313,26 @@ details.tree-det[open] > .tree-summary::before { transform: rotate(90deg); }
 .stat-card.stat-expense .stat-value { color: var(--success); }
 .stat-card.stat-balance .stat-value { color: var(--primary); }
 
+/* Growth analysis card */
+.stats-grid-wide { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 900px) { .stats-grid-wide { grid-template-columns: repeat(2, 1fr); } }
+.stat-card.stat-growth .stat-value { color: var(--primary); font-size: 1.25rem; }
+.stat-card.stat-up .stat-value { color: #dc2626; }
+.stat-card.stat-down .stat-value { color: #16a34a; }
+.stat-card.stat-growth .stat-sub {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: .3rem; font-size: .75rem; color: var(--muted);
+}
+.growth-range { font-variant-numeric: tabular-nums; }
+.growth-pct { font-weight: 700; font-variant-numeric: tabular-nums; }
+.growth-pct.pct-up { color: #dc2626; }
+.growth-pct.pct-down { color: #16a34a; }
+.growth-trend {
+  display: inline-block; margin-left: .25rem;
+  font-size: .7rem; padding: .05rem .3rem; border-radius: 4px;
+  background: rgba(37,99,235,.1); color: var(--primary);
+}
+
 .section-title {
   font-size: 1rem; font-weight: 600; margin: 1.2rem 0 .6rem;
   padding-left: .5rem; border-left: 3px solid var(--primary);
