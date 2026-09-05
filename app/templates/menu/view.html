@@ -53,17 +53,22 @@
   </div>
 </section>
 
-<form method="post" action="{{ url_for('menu.save', menu_id=menu.id) }}" class="entry-form">
+<form method="post" action="{{ url_for('menu.save', menu_id=menu.id) }}" class="entry-form" id="entryForm">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="year" value="{{ year }}">
   <input type="hidden" name="month" value="{{ month }}">
 
-  <div class="card">
-    <div class="card-hd">
-      条目编辑 <span class="muted">{{ items|length }} 项</span>
+  <div class="card entry-card" id="entryCard">
+    <div class="card-hd entry-card-hd">
+      <span>条目编辑表 <span class="muted">{{ items|length }} 项</span></span>
+      <div class="entry-card-actions">
+        <a class="btn btn-sm btn-secondary" href="{{ url_for('menu.view', menu_id=menu.id, year=year, month=month) }}" title="刷新数据">🔄 刷新</a>
+        <button type="button" class="btn btn-sm btn-primary" id="btnBatchEdit" title="进入批量编辑模式">✏️ 批量编辑</button>
+        <button type="submit" class="btn btn-sm btn-primary" id="btnSave" disabled style="opacity:.4;pointer-events:none">💾 保存</button>
+      </div>
     </div>
-    <div class="table-wrap">
-      <table class="data-table entry-table">
+    <div class="table-wrap entry-table-wrap">
+      <table class="data-table entry-table" id="entryTable">
         <thead>
           <tr>
             <th class="c-idx">#</th>
@@ -72,8 +77,9 @@
             <th class="c-owner">属主</th>
             <th class="c-val">金额</th>
             <th class="c-note">备注</th>
-            <th class="c-stat">均值</th>
-            <th class="c-stat">合计</th>
+            <th class="c-stat c-stat-avg">均值</th>
+            <th class="c-stat c-stat-sum">合计</th>
+            <th class="c-status">状态</th>
           </tr>
         </thead>
         <tbody>
@@ -81,34 +87,54 @@
         {% for it in items %}
           {% set a = asset_map.get(it.id) %}
           {% set st = item_stats.get(it.id) %}
-          <tr data-type="{{ it.type }}">
-            <td class="c-idx">{% set ns.c = ns.c + 1 %}{{ ns.c }}</td>
-            <td class="c-name">{{ it.name }}</td>
-            <td class="c-type"><span class="chip chip-{{ 'income' if it.type == '收入' else ('expense' if it.type == '支出' else 'balance') }}">{{ it.type }}</span></td>
-            <td class="c-owner">{{ it.owner }}</td>
-            <td class="c-val">
-              <input type="number" step="0.01" name="item_{{ it.id }}"
+          <tr id="row-{{ it.id }}" data-type="{{ it.type }}" class="{{ 'row-missing' if not a }}">
+            <td class="c-idx" data-label="序号">{% set ns.c = ns.c + 1 %}{{ ns.c }}</td>
+            <td class="c-name" data-label="名称">{{ it.name }}</td>
+            <td class="c-type" data-label="类型"><span class="chip chip-{{ 'income' if it.type == '收入' else ('expense' if it.type == '支出' else 'balance') }}">{{ it.type }}</span></td>
+            <td class="c-owner" data-label="属主">{{ it.owner }}</td>
+            <td class="c-val" data-label="金额">
+              <input type="number" step="0.01" inputmode="decimal" name="item_{{ it.id }}"
                      value="{{ a.value if a and a.value is not none else '' }}"
+                     readonly
                      placeholder="0.00" class="table-input">
             </td>
-            <td class="c-note">
+            <td class="c-note" data-label="备注">
               <input type="text" name="note_{{ it.id }}"
                      value="{{ a.note if a else '' }}" maxlength="120"
-                     class="table-input">
+                     class="table-input" readonly>
             </td>
-            <td class="c-stat muted">{{ st.avg|fmt_money if st else '-' }}</td>
-            <td class="c-stat muted">{{ st.sum|fmt_money if st else '-' }}</td>
+            <td class="c-stat c-stat-avg muted font-nums" data-label="均值">{{ st.avg|fmt_money if st else '-' }}</td>
+            <td class="c-stat c-stat-sum muted font-nums" data-label="合计">{{ st.sum|fmt_money if st else '-' }}</td>
+            <td class="c-status" data-label="状态">
+              {% if not a %}
+                <span class="chip chip-warn" title="未填写">未填</span>
+              {% else %}
+                <span class="chip chip-ok" title="已填写">✓</span>
+              {% endif %}
+            </td>
           </tr>
         {% else %}
-          <tr><td colspan="8" class="empty-row">此菜单未选择任何条目</td></tr>
+          <tr><td colspan="9" class="empty-row">此菜单未选择任何条目, 请到「系统配置」编辑菜单</td></tr>
         {% endfor %}
         </tbody>
+        {% if items %}
+        <tfoot>
+          <tr class="row-total">
+            <td colspan="4" class="ta-right"><b>分组合计</b></td>
+            <td class="c-val" colspan="5">
+              <div class="sum-chips-wrap">
+                <span class="sum-chip sum-income">收入 <b id="sumIncome" class="font-nums">0.00</b></span>
+                <span class="sum-chip sum-expense">支出 <b id="sumExpense" class="font-nums">0.00</b></span>
+                <span class="sum-chip sum-balance">储蓄 <b id="sumBalance" class="font-nums">0.00</b></span>
+                <span class="sum-chip sum-savings">资产 <b id="sumSavings" class="font-nums">0.00</b></span>
+                <span class="sum-chip sum-net">净额(收-支) <b id="sumNet" class="font-nums">0.00</b></span>
+              </div>
+            </td>
+          </tr>
+        </tfoot>
+        {% endif %}
       </table>
     </div>
-  </div>
-
-  <div class="form-actions">
-    <button type="submit" class="btn btn-primary">保存数据</button>
   </div>
 </form>
 {% endblock %}
@@ -178,7 +204,22 @@
       type: "doughnut",
       data: { labels: items.map(function(i){return i.label;}),
               datasets: [{ data: items.map(function(i){return i.value;}), backgroundColor: colors }] },
-      options: { responsive: true, plugins: { legend: { position: "right" } } }
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: "right" },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) {
+                var total = ctx.dataset.data.reduce(function (a, b) { return a + (isNaN(b) ? 0 : b); }, 0);
+                var v = ctx.parsed;
+                var pct = total ? (v / total * 100).toFixed(1) : "0.0";
+                return ctx.label + ": " + (isNaN(v) ? 0 : v).toFixed(2) + " (" + pct + "%)";
+              }
+            }
+          }
+        }
+      }
     });
   }
   renderPie("");
@@ -187,5 +228,81 @@
   if (sel) {
     sel.addEventListener("change", function () { renderPie(sel.value); });
   }
+
+// 实时分组合计
+(function () {
+  var inputs = document.querySelectorAll('input[name^="item_"]');
+  if (!inputs.length) return;
+  var sumIncome = document.getElementById('sumIncome');
+  var sumExpense = document.getElementById('sumExpense');
+  var sumBalance = document.getElementById('sumBalance');
+  var sumSavings = document.getElementById('sumSavings');
+  var sumNet = document.getElementById('sumNet');
+  function calcTotal() {
+    var sums = { "收入": 0, "支出": 0, "储蓄": 0, "理财": 0, "资产总和": 0, "其他": 0 };
+    inputs.forEach(function (el) {
+      var v = parseFloat(el.value);
+      if (isNaN(v)) return;
+      var tr = el.closest('tr');
+      var t = tr ? tr.getAttribute('data-type') : '';
+      if (!(t in sums)) t = "其他";
+      sums[t] += v;
+    });
+    if (sumIncome) sumIncome.textContent = sums["收入"].toFixed(2);
+    if (sumExpense) sumExpense.textContent = sums["支出"].toFixed(2);
+    if (sumBalance) sumBalance.textContent = sums["储蓄"].toFixed(2);
+    if (sumSavings) sumSavings.textContent = sums["资产总和"].toFixed(2);
+    if (sumNet) sumNet.textContent = (sums["收入"] - sums["支出"]).toFixed(2);
+  }
+  inputs.forEach(function (el) { el.addEventListener('input', calcTotal); });
+  calcTotal();
+})();
+
+// 批量编辑模式切换
+(function () {
+  var btnEdit = document.getElementById('btnBatchEdit');
+  var btnSave = document.getElementById('btnSave');
+  var form = document.getElementById('entryForm');
+  var table = document.getElementById('entryTable');
+  if (!btnEdit || !form || !table) return;
+  var editMode = false;
+  btnEdit.addEventListener('click', function () {
+    editMode = !editMode;
+    var inputs = table.querySelectorAll('input.table-input');
+    inputs.forEach(function (el) {
+      if (editMode) {
+        el.removeAttribute('readonly');
+        el.classList.add('editable');
+      } else {
+        el.setAttribute('readonly', '');
+        el.classList.remove('editable');
+      }
+    });
+    if (editMode) {
+      table.classList.add('edit-mode');
+      btnEdit.innerHTML = '✅ 退出编辑';
+      btnEdit.classList.remove('btn-primary');
+      btnEdit.classList.add('btn-secondary');
+      btnSave.disabled = false;
+      btnSave.style.opacity = '';
+      btnSave.style.pointerEvents = '';
+      var first = table.querySelector('input.table-input.editable');
+      if (first) first.focus();
+    } else {
+      table.classList.remove('edit-mode');
+      btnEdit.innerHTML = '✏️ 批量编辑';
+      btnEdit.classList.remove('btn-secondary');
+      btnEdit.classList.add('btn-primary');
+      btnSave.disabled = true;
+      btnSave.style.opacity = '.4';
+      btnSave.style.pointerEvents = 'none';
+    }
+  });
+  if (btnSave) {
+    form.addEventListener('submit', function () {
+      btnSave.classList.add('btn-loading');
+    });
+  }
+})();
 </script>
 {% endblock %}

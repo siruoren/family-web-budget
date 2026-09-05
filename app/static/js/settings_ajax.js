@@ -52,6 +52,23 @@
       // 记住替换前后的滚动锚点: 保持视口稳定
       el.replaceWith(next);
     });
+    // 清理可能残留的浮动弹窗 (AJAX 替换时旧 details 被新 HTML 覆盖,
+    // 但 .edit-pop 已被移到 body, 不会被替换, 需主动移除)
+    document.querySelectorAll("body > .edit-pop-floating").forEach(function (p) {
+      // 若原属 details 已不在文档, 直接移除; 否则移回原位以便 details 正常折叠
+      var orig = p._origParent;
+      if (orig && document.body.contains(orig)) {
+        orig.appendChild(p);
+        p.classList.remove("edit-pop-floating");
+        p.style.removeProperty("position");
+        p.style.removeProperty("top");
+        p.style.removeProperty("left");
+        p.style.removeProperty("transform");
+      } else {
+        p.remove();
+      }
+    });
+    document.querySelectorAll(".edit-pop-overlay").forEach(function (o) { o.remove(); });
   }
 
   // ---- 公式校验 (从内联脚本迁移, 全局可用) ----
@@ -157,4 +174,71 @@
     input.focus();
     try { input.setSelectionRange(pos, pos); } catch (ex) {}
   });
+
+  // ---- 弹窗视口居中 (规避祖先 backdrop-filter 导致 fixed 包含块失效) ----
+  // .edit-pop 原为 position:fixed 视口居中, 但设置页祖先 (.admin-sidebar/.card)
+  // 有 backdrop-filter:blur, 按 CSS 规范该祖先成为 fixed 后代的包含块, 弹窗
+  // 相对卡片(整个内容区)居中而非视口; 且 card 形成独立层叠上下文, z-index
+  // 困于其内无法盖外部 nav。修复: 打开 details 时把 .edit-pop 移到 body 末尾
+  // (无 backdrop-filter 祖先), fixed 相对视口居中 + 全屏遮罩 + 高 z-index。
+  function floatPop(pop, det) {
+    if (pop.classList.contains("edit-pop-floating")) return;
+    pop._origParent = pop.parentNode;
+    pop._origDetails = det;
+    document.body.appendChild(pop);
+    pop.classList.add("edit-pop-floating");
+    pop.style.position = "fixed";
+    pop.style.top = "50vh";
+    pop.style.left = "50vw";
+    pop.style.transform = "translate(-50%, -50%)";
+    var ov = document.createElement("div");
+    ov.className = "edit-pop-overlay";
+    ov.addEventListener("click", function () { unfloatPop(pop); });
+    document.body.appendChild(ov);
+    pop._overlay = ov;
+    pop._escHandler = function (e) {
+      if (e.key === "Escape") unfloatPop(pop);
+    };
+    document.addEventListener("keydown", pop._escHandler);
+    var firstInput = pop.querySelector('input:not([type=hidden]), button');
+    if (firstInput) setTimeout(function () { firstInput.focus(); }, 0);
+  }
+
+  function unfloatPop(pop) {
+    if (!pop || !pop.classList.contains("edit-pop-floating")) return;
+    var det = pop._origDetails;
+    if (det) det.open = false;
+    if (pop._overlay) { pop._overlay.remove(); pop._overlay = null; }
+    if (pop._origParent && document.body.contains(pop._origParent)) {
+      pop._origParent.appendChild(pop);
+    } else {
+      pop.remove();
+    }
+    pop.classList.remove("edit-pop-floating");
+    pop.style.removeProperty("position");
+    pop.style.removeProperty("top");
+    pop.style.removeProperty("left");
+    pop.style.removeProperty("transform");
+    document.removeEventListener("keydown", pop._escHandler);
+    pop._origParent = null;
+    pop._origDetails = null;
+  }
+  window.unfloatPop = unfloatPop;
+
+  // click 委托: summary 切换 details.open 后(延时一帧) 移/回弹窗
+  document.addEventListener("click", function (ev) {
+    var det = ev.target.closest && ev.target.closest("details.inline-edit");
+    if (!det) return;
+    setTimeout(function () {
+      if (det.open) {
+        var pop = det.querySelector(":scope > .edit-pop");
+        if (pop) floatPop(pop, det);
+      } else {
+        var all = document.querySelectorAll("body > .edit-pop-floating");
+        for (var i = 0; i < all.length; i++) {
+          if (all[i]._origDetails === det) { unfloatPop(all[i]); break; }
+        }
+      }
+    }, 0);
+  }, true);
 })();

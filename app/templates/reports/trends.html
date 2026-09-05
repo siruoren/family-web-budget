@@ -121,7 +121,22 @@
     new Chart(c, {
       type: "doughnut",
       data: { labels: keys, datasets: [{ data: keys.map(function(k){return data[k];}), backgroundColor: colors }] },
-      options: { responsive: true, plugins: { legend: { position: "right" } } }
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: "right" },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) {
+                var total = ctx.dataset.data.reduce(function (a, b) { return a + (isNaN(b) ? 0 : b); }, 0);
+                var v = ctx.parsed;
+                var pct = total ? (v / total * 100).toFixed(1) : "0.0";
+                return ctx.label + ": " + (isNaN(v) ? 0 : v).toFixed(2) + " (" + pct + "%)";
+              }
+            }
+          }
+        }
+      }
     });
   }
   mkPie("typeShareChart", TYPE_SHARE);
